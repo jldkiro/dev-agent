@@ -1,0 +1,127 @@
+{
+  "date": "2026-11-08",
+  "tests": [
+    {
+      "test": "separate_workers_and_host_keys",
+      "detail": [
+        "https://github.com/jldkiro/dev-agent/actions/runs/42517932143",
+        "https://github.com/jldkiro/dev-agent/actions/runs/42517965081"
+      ],
+      "at": 1794168110.6585822
+    },
+    {
+      "test": "stdout_stderr_streaming_exit_code",
+      "detail": true,
+      "at": 1794168121.7792344
+    },
+    {
+      "test": "sanitized_environment_uv_and_docker",
+      "detail": {
+        "hostname": "runnervm7aw5e",
+        "boot_id": "56de7cbf-ec81-455d-8398-812fe80f051f",
+        "sha256": "2312394bd99545d9de131c24efb781e765ac1aec243f2ed9347597a793a415e9",
+        "uv": "uv 0.13.6 (x86_64-unknown-linux-gnu)",
+        "docker": "28.0.4"
+      },
+      "at": 1794168128.594818
+    },
+    {
+      "test": "binary_download_hash_and_overwrite_guard",
+      "detail": {
+        "bytes": 262144,
+        "sha256": "2312394bd99545d9de131c24efb781e765ac1aec243f2ed9347597a793a415e9"
+      },
+      "at": 1794168130.7888515
+    },
+    {
+      "test": "separate_runs_host_keys_and_filesystems",
+      "detail": {
+        "main": "runnervm7aw5e",
+        "other": "runnervm7aw5e",
+        "main_boot_id": "56de7cbf-ec81-455d-8398-812fe80f051f",
+        "other_boot_id": "fae257f5-b6f6-4ca4-ba88-18ee42aeaaec"
+      },
+      "at": 1794168136.0025418
+    },
+    {
+      "test": "cross_session_private_key_rejected",
+      "detail": true,
+      "at": 1794168137.1257968
+    },
+    {
+      "test": "detached_process_group_cancelled",
+      "detail": true,
+      "at": 1794168148.3323085
+    },
+    {
+      "test": "remote_linux_test_suite",
+      "detail": "rker_refuses_non_forced_shutdown (__main__.StorageSafety.test_active_worker_refuses_non_forced_shutdown) ... ok\ntest_archive_filters_exclude_secrets_dependencies_and_outer_symlinks (__main__.StorageSafety.test_archive_filters_exclude_secrets_dependencies_and_outer_symlinks) ... ok\ntest_archive_traversal_and_links_are_rejected (__main__.StorageSafety.test_archive_traversal_and_links_are_rejected) ... ok\ntest_command_directory_and_download_cannot_escape_workspace (__main__.StorageSafety.test_command_directory_and_download_cannot_escape_workspace) ... ok\ntest_git_snapshot_includes_dirty_and_untracked_files_with_executable_mode (__main__.StorageSafety.test_git_snapshot_includes_dirty_and_untracked_files_with_executable_mode) ... ok\ntest_rpc_rejects_another_session_before_any_write (__main__.StorageSafety.test_rpc_rejects_another_session_before_any_write) ... ok\ntest_status_polling_does_not_extend_idle_deadline (__main__.StorageSafety.test_status_polling_does_not_extend_idle_deadline) ... ok\ntest_submission_is_idempotent_and_conflicting_reuse_is_rejected (__main__.StorageSafety.test_submission_is_idempotent_and_conflicting_reuse_is_rejected) ... ok\ntest_upload_checksum_and_incomplete_stream (__main__.StorageSafety.test_upload_checksum_and_incomplete_stream) ... ok\ntest_wrong_session_cannot_inspect_or_submit (__main__.StorageSafety.test_wrong_session_cannot_inspect_or_submit) ... ok\n\n----------------------------------------------------------------------\nRan 14 tests in 14.960s\n\nOK\n",
+      "at": 1794168171.1711137
+    },
+    {
+      "test": "real_15_minute_test_started",
+      "detail": {
+        "idle_run": "https://github.com/jldkiro/dev-agent/actions/runs/42517965081",
+        "busy_run": "https://github.com/jldkiro/dev-agent/actions/runs/42517932143",
+        "command_sleep_seconds": 925
+      },
+      "at": 1794168183.3123782
+    },
+    {
+      "test": "command_still_running_after_15_minutes",
+      "detail": {
+        "elapsed_seconds": 905.8,
+        "status": "running"
+      },
+      "at": 1794169085.3578796
+    },
+    {
+      "test": "idle_worker_expired_with_passive_polling",
+      "detail": {
+        "elapsed_seconds": 905.8,
+        "conclusion": "success"
+      },
+      "at": 1794169085.373564
+    },
+    {
+      "test": "busy_completion_resets_full_idle_period",
+      "detail": {
+        "idle_remaining_seconds": 896.0244054780001
+      },
+      "at": 1794169113.0189085
+    }
+  ],
+  "complete": true,
+  "runs": [
+    {
+      "session_id": "3e31a301019e3c55296f69ca02778a40",
+      "request_id": "d5c753c3dbc7499ea7eab918e12b0a1d",
+      "run_id": 42517932143,
+      "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42517932143",
+      "sha": "8fd19717128c656828623876156301be9dad0145"
+    },
+    {
+      "session_id": "0961c6ab590bb8a808f97559e1f617e0",
+      "request_id": "d651bb8143c443c9af98e0c2f52f2ade",
+      "run_id": 42517965081,
+      "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42517965081",
+      "sha": "8fd19717128c656828623876156301be9dad0145"
+    }
+  ],
+  "long_job": {
+    "job": "afe6789e55244cebbaa032bbca619832",
+    "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42517932143"
+  },
+  "cleanup": [
+    {
+      "phase": "retired",
+      "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42517965081",
+      "ephemeral": true
+    },
+    {
+      "phase": "retired",
+      "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42517932143",
+      "ephemeral": true
+    }
+  ]
+}

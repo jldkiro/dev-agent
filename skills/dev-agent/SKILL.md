@@ -41,6 +41,9 @@ produits par une autre commande figurent dans ce snapshot; récupérer les résu
 localement ou choisir une seule commande qui réalise l'enchaînement voulu.
 Le cache uv peut être réutilisé pendant la vie du worker. Une commande active
 survit à la déconnexion SSH; elle reste limitée par la durée maximale du job.
+Un conteneur lancé avec `docker run -d` ne compte pas, à lui seul, comme une
+commande encore active : garder un travail géré au premier plan si sa durée
+doit protéger la session, sans ajouter de keepalive artificiel.
 
 `stop` refuse les commandes actives; `stop --force` signifie les abandonner
 explicitement. Aucun jeton Cloudflare, T3 ou fournisseur LLM n'est nécessaire sur

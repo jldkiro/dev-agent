@@ -113,3 +113,16 @@ run if allocation or worker health fails. Disabling `worker.yml` stops new
 allocations; cancel active runs to retire them. Uninstall the local launcher and
 skill to remove client integration without deleting project files.
 
+### Live qualification, 2026-11-08
+
+[Receipt](verification/live-2026-11-08.json): two independent GitHub allocations,
+different SSH host keys and Linux boot IDs, cross-session key rejection and
+isolated workspaces. The idle allocation finished successfully at the check
+905.8 seconds after its last activity, while a 925-second command remained
+running on the other allocation. Completion reset that worker's idle period.
+Both allocations were retired and their client keys and public connection
+artifacts removed. Other checks cover separate stdout/stderr, streaming, exit
+code 42, binary checksum and overwrite protection, Docker/uv and process-group
+cancellation. This qualifies the Windows client to GitHub Linux path; it does
+not claim multi-hour reliability or compatibility with every compute provider.
+
