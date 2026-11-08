@@ -345,14 +345,17 @@ class Session:
                         with zipfile.ZipFile(__import__("io").BytesIO(data)) as archive:
                             connection = json.loads(archive.read("connection.json"))
                         self.configure_ssh(state, connection)
-                        for attempt in range(3):
+                        probe_deadline = time.monotonic() + 30
+                        while True:
                             try:
                                 if self.rpc({"op": "status"}, state=state)["phase"] == "open":
                                     return state
                             except (RuntimeError, OSError):
-                                if attempt == 2:
+                                if time.monotonic() >= probe_deadline:
                                     raise
                                 time.sleep(2)
+                            if time.monotonic() >= probe_deadline:
+                                break
                         raise RuntimeError("Allocated worker did not become ready")
                     if poll_count % 3 == 0:
                         run = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}")
