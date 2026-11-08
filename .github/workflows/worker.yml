@@ -1,0 +1,120 @@
+name: Ephemeral development worker
+run-name: dev-agent ${{ inputs.session_id }} ${{ inputs.request_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      session_id:
+        description: Opaque client session identifier
+        required: true
+        type: string
+      request_id:
+        description: Unique allocation request identifier
+        required: true
+        type: string
+      public_key:
+        description: Client public SSH key (never a private key)
+        required: true
+        type: string
+permissions: {}
+jobs:
+  worker:
+    if: github.actor == github.repository_owner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Bootstrap isolated development worker
+        shell: bash
+        env:
+          SESSION_ID: ${{ inputs.session_id }}
+          REQUEST_ID: ${{ inputs.request_id }}
+          CLIENT_PUBLIC_KEY: ${{ inputs.public_key }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,re
+          assert re.fullmatch(r'[a-f0-9]{32}', os.environ['SESSION_ID'])
+          assert re.fullmatch(r'[a-f0-9]{32}', os.environ['REQUEST_ID'])
+          assert re.fullmatch(r'ssh-ed25519 [A-Za-z0-9+/=]+(?: [^\r\n]*)?', os.environ['CLIENT_PUBLIC_KEY'])
+          PY
+          command -v /usr/sbin/sshd || { sudo apt-get update -qq; sudo apt-get install -y -qq openssh-server; }
+          control=/opt/dev-agent
+          data=/tmp/dev-agent
+          mkdir -p "$RUNNER_TEMP/dev-agent-public"
+          sudo mkdir -p "$control" "$data/home" "$data/state" /run/sshd
+          curl --fail --silent --show-error --location "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/worker.py" -o "$RUNNER_TEMP/dev-agent-worker.py"
+          sudo install -m 644 "$RUNNER_TEMP/dev-agent-worker.py" "$control/worker.py"
+          sudo useradd --no-create-home --home-dir "$data/home" --shell /bin/bash devagent
+          sudo usermod --password '*' devagent
+          if getent group docker >/dev/null; then sudo usermod --append --groups docker devagent; fi
+          sudo chown -R devagent:devagent "$data"
+          curl --fail --silent --show-error --location https://github.com/astral-sh/uv/releases/download/0.13.6/uv-x86_64-unknown-linux-gnu.tar.gz -o "$RUNNER_TEMP/uv.tar.gz"
+          echo 'f29c3e94ffabd7e6f3ba521dba169a9b7ec12100bf3257087f0f24f6123f3645  '"$RUNNER_TEMP/uv.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/uv-bin"
+          tar -xzf "$RUNNER_TEMP/uv.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/uv-bin"
+          sudo install -m 755 "$RUNNER_TEMP/uv-bin/uv" /usr/local/bin/uv
+          printf '%s\n' "$CLIENT_PUBLIC_KEY" | sudo tee "$control/authorized_keys" >/dev/null
+          sudo chmod 644 "$control/authorized_keys"
+          sudo ssh-keygen -q -t ed25519 -N '' -f "$control/host_key"
+          cat > "$RUNNER_TEMP/dev-agent-sshd" <<EOF
+          Port 2222
+          ListenAddress 127.0.0.1
+          HostKey $control/host_key
+          PidFile $control/sshd.pid
+          AuthorizedKeysFile $control/authorized_keys
+          PubkeyAuthentication yes
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          AuthenticationMethods publickey
+          PermitRootLogin no
+          AllowUsers devagent
+          AllowAgentForwarding no
+          AllowTcpForwarding no
+          X11Forwarding no
+          PermitTunnel no
+          PermitTTY no
+          UsePAM no
+          StrictModes yes
+          LogLevel ERROR
+          ForceCommand /usr/bin/python3 $control/worker.py rpc --root $data/state --session $SESSION_ID
+          EOF
+          sudo install -m 600 "$RUNNER_TEMP/dev-agent-sshd" "$control/sshd_config"
+          sudo /usr/sbin/sshd -t -f "$control/sshd_config"
+          sudo -u devagent env -i HOME="$data/home" PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 python3 "$control/worker.py" serve --root "$data/state" --session "$SESSION_ID" --idle-seconds 900 --lifetime-seconds 21000 > "$RUNNER_TEMP/dev-agent-controller.log" 2>&1 &
+          echo "$!" > "$RUNNER_TEMP/dev-agent-controller.pid"
+          sudo /usr/sbin/sshd -D -e -f "$control/sshd_config" > "$RUNNER_TEMP/dev-agent-sshd.log" 2>&1 &
+          curl --fail --silent --show-error --location https://github.com/cloudflare/cloudflared/releases/download/2026.8.3/cloudflared-linux-amd64 -o "$RUNNER_TEMP/dev-agent-cloudflared"
+          echo 'f29324fe934d1e100617484c78deef803c4dc2cd351d645bbde42e96b4fccc5e  '"$RUNNER_TEMP/dev-agent-cloudflared" | sha256sum --check
+          chmod 755 "$RUNNER_TEMP/dev-agent-cloudflared"
+          "$RUNNER_TEMP/dev-agent-cloudflared" tunnel --no-autoupdate --url ssh://127.0.0.1:2222 > "$RUNNER_TEMP/dev-agent-tunnel.log" 2>&1 &
+          for attempt in $(seq 1 90); do
+            grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' "$RUNNER_TEMP/dev-agent-tunnel.log" | head -1 > "$RUNNER_TEMP/dev-agent-url" || true
+            test ! -s "$RUNNER_TEMP/dev-agent-url" || break
+            sleep 2
+          done
+          test -s "$RUNNER_TEMP/dev-agent-url"
+          sudo cat "$control/host_key.pub" > "$RUNNER_TEMP/dev-agent-host.pub"
+          python3 - <<'PY'
+          import json,os,pathlib,time
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          data={'protocol':1,'ephemeral':True,'repository':os.environ['GITHUB_REPOSITORY'],'run_id':int(os.environ['GITHUB_RUN_ID']),'sha':os.environ['GITHUB_SHA'],'session_id':os.environ['SESSION_ID'],'request_id':os.environ['REQUEST_ID'],'url':(root/'dev-agent-url').read_text().strip(),'host_key':(root/'dev-agent-host.pub').read_text().strip(),'idle_seconds':900,'created_at':time.time()}
+          (root/'dev-agent-public'/'connection.json').write_text(json.dumps(data))
+          PY
+      - name: Publish public connection information
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: connection-${{ inputs.request_id }}
+          path: ${{ runner.temp }}/dev-agent-public/connection.json
+          retention-days: 1
+      - name: Wait for activity-aware worker expiration
+        shell: bash
+        run: |
+          set -euo pipefail
+          pid=$(cat "$RUNNER_TEMP/dev-agent-controller.pid")
+          while kill -0 "$pid" 2>/dev/null; do sleep 2; done
+          cat "$RUNNER_TEMP/dev-agent-controller.log"
+          sudo -u devagent python3 - <<'PY'
+          import sqlite3
+          row=sqlite3.connect('/tmp/dev-agent/state/state.sqlite').execute('SELECT phase,reason FROM state WHERE id=1').fetchone()
+          assert row and row[0]=='closed', 'Worker controller stopped unexpectedly'
+          print('Worker closed:',row[1])
+          PY
