@@ -3,7 +3,8 @@
 Run development commands on a temporary GitHub-hosted Linux worker while your
 coding agent, conversation and model credentials stay on your own computer.
 Transport: **OpenSSH over a public Cloudflare Quick Tunnel**, without T3 Connect,
-a Cloudflare account, a VPN or a private key on the worker.
+a Cloudflare account, a VPN or transferring your private client key to the worker.
+The worker generates its own temporary SSH host key.
 
 Each client session gets its **own VM and SSH keypair**. A worker closes after
 **15 minutes without real activity and without active commands/transfers**.
