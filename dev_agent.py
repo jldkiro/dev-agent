@@ -88,9 +88,15 @@ class Channel:
     def _request(self, payload, upload=None):
         self.send(payload)
         if upload:
-            with Path(upload).open("rb") as source:
-                shutil.copyfileobj(source, self.process.stdin, 1024 * 1024)
-            self.process.stdin.flush()
+            try:
+                with Path(upload).open("rb") as source:
+                    shutil.copyfileobj(source, self.process.stdin, 1024 * 1024)
+                self.process.stdin.flush()
+            except BrokenPipeError:
+                # Preserve a complete server rejection instead of hiding it
+                # behind a local pipe error. No request is retried.
+                self.reply()
+                raise RuntimeError("SSH upload ended before its source was sent") from None
         return self.reply().get("result")
 
     def watch(self, job):
@@ -381,9 +387,21 @@ class Session:
             try:
                 process.stdin.write((json.dumps(payload) + "\n").encode())
                 if upload:
-                    with Path(upload).open("rb") as source:
-                        shutil.copyfileobj(source, process.stdin, 1024 * 1024)
-                process.stdin.close()
+                    try:
+                        with Path(upload).open("rb") as source:
+                            shutil.copyfileobj(source, process.stdin, 1024 * 1024)
+                    except BrokenPipeError:
+                        header = process.stdout.readline(1024 * 1024)
+                        if header:
+                            response = json.loads(header)
+                            if not response.get("ok"):
+                                raise RemoteRejected(response.get("error", "Upload rejected")) from None
+                        errors.seek(0)
+                        raise RuntimeError("SSH upload closed: " + errors.read().decode(errors="replace")[-1500:]) from None
+                try:
+                    process.stdin.close()
+                except BrokenPipeError:
+                    pass
                 header = process.stdout.readline(1024 * 1024)
                 if not header:
                     process.wait(timeout=35)
