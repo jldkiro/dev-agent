@@ -114,9 +114,12 @@ def main():
                 import io, zipfile
                 with zipfile.ZipFile(io.BytesIO(logs)) as archive:
                     raw = b"\n".join(archive.read(name) for name in archive.namelist() if not name.endswith("/"))
+                    job_log_lines = sum(len(archive.read(name).splitlines()) for name in archive.namelist() if "/" not in name and name.endswith(".txt"))
                 assert not any(c.encode() in raw for c in canaries), "Private command canary leaked into public Actions logs"
                 trial["log_bytes"] = len(raw)
                 trial["log_lines"] = len(raw.splitlines())
+                # The ZIP also contains per-step duplicates; keep an aggregate-only count.
+                trial["job_log_lines"] = job_log_lines
                 trial["private_canaries_absent"] = True
                 trial["canary_hashes"] = [hashlib.sha256(c.encode()).hexdigest() for c in canaries]
                 # Store only sizes and hashes, never raw logs or canary plaintext.

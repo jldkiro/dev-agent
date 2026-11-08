@@ -1,0 +1,1133 @@
+{
+  "date": "2026-11-08",
+  "complete": true,
+  "measurements": [
+    {
+      "label": "baseline",
+      "summary": {
+        "startup_median_seconds": 24.6418,
+        "warm_command_median_seconds": 8.2167,
+        "rpc_median_seconds": 1.5307
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "warm_command_seconds": [
+            10.7466,
+            9.9044,
+            11.8164
+          ],
+          "rpc_seconds": [
+            1.8977,
+            1.7367,
+            1.7858
+          ],
+          "startup_seconds": 28.7267,
+          "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42528833786",
+          "run_id": 42528833786,
+          "sha": "2d15d108fc41b9df3bf417e62eacc4c9fddf0547",
+          "download_seconds": 2.2944,
+          "project_pack_seconds": 30.6006,
+          "project_files": 1224,
+          "project_bytes": 38729604,
+          "project_upload_seconds": 25.0087,
+          "cleanup": {
+            "phase": "retired",
+            "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42528833786",
+            "ephemeral": true
+          },
+          "github_steps": [
+            {
+              "name": "Set up job",
+              "started_at": "2026-11-08T22:09:55Z",
+              "completed_at": "2026-11-08T22:09:56Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Bootstrap isolated development worker",
+              "started_at": "2026-11-08T22:09:56Z",
+              "completed_at": "2026-11-08T22:10:05Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Publish public connection information",
+              "started_at": "2026-11-08T22:10:05Z",
+              "completed_at": "2026-11-08T22:10:06Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Wait for activity-aware worker expiration",
+              "started_at": "2026-11-08T22:10:06Z",
+              "completed_at": "2026-11-08T22:11:54Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Report startup diagnostics without command payloads",
+              "started_at": "2026-11-08T22:11:54Z",
+              "completed_at": "2026-11-08T22:11:54Z",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Complete job",
+              "started_at": "2026-11-08T22:11:54Z",
+              "completed_at": "2026-11-08T22:11:54Z",
+              "conclusion": "success"
+            }
+          ],
+          "log_bytes": 31367,
+          "log_lines": 352,
+          "private_canaries_absent": true,
+          "canary_hashes": [
+            "ec18bbd721583f3ae986d694ced28a42a6e445bcf002fac987e5f220c50be8ae",
+            "c481489eb5b18c576cdabbc1d7e061a20bbd87da8604842bc7a1c195dd2cc874",
+            "1a449310aac1183f87098cb9a279364a6bd914429b2b60a4eaf08cd3f6d0a00f",
+            "219cce6404f83b3ba474218e8a3f5be2f0541f89cb751145ddc2f05a044ef1f3"
+          ],
+          "job_log_lines": 169
+        },
+        {
+          "trial": 2,
+          "warm_command_seconds": [
+            6.529,
+            6.1126,
+            6.0065
+          ],
+          "rpc_seconds": [
+            1.3247,
+            1.1353,
+            1.2635
+          ],
+          "startup_seconds": 20.5569,
+          "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42529030721",
+          "run_id": 42529030721,
+          "sha": "2d15d108fc41b9df3bf417e62eacc4c9fddf0547",
+          "download_seconds": 1.6747,
+          "cleanup": {
+            "phase": "retired",
+            "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42529030721",
+            "ephemeral": true
+          },
+          "github_steps": [
+            {
+              "name": "Set up job",
+              "started_at": "2026-11-08T22:12:07Z",
+              "completed_at": "2026-11-08T22:12:08Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Bootstrap isolated development worker",
+              "started_at": "2026-11-08T22:12:08Z",
+              "completed_at": "2026-11-08T22:12:15Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Publish public connection information",
+              "started_at": "2026-11-08T22:12:15Z",
+              "completed_at": "2026-11-08T22:12:16Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Wait for activity-aware worker expiration",
+              "started_at": "2026-11-08T22:12:16Z",
+              "completed_at": "2026-11-08T22:12:48Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Report startup diagnostics without command payloads",
+              "started_at": "2026-11-08T22:12:48Z",
+              "completed_at": "2026-11-08T22:12:48Z",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Complete job",
+              "started_at": "2026-11-08T22:12:48Z",
+              "completed_at": "2026-11-08T22:12:48Z",
+              "conclusion": "success"
+            }
+          ],
+          "log_bytes": 31371,
+          "log_lines": 352,
+          "private_canaries_absent": true,
+          "canary_hashes": [
+            "f16a85b1854555b97d922358d9017b9f1ed446dca09409cead8a142d6a9fc1b2",
+            "c4dc36ce862e9714890759f34c4a9f27bfd012c95acde3e4291ca5949c26dfea",
+            "74e0b6e1009055ad421b8ee7e540ade2a8e5f51e603881b76395441f9d07021d",
+            "60287217eef170f7363a7437da64db6c565f3917dfa75d6ad4e0fb3d4b2d014f"
+          ],
+          "job_log_lines": 169
+        }
+      ]
+    },
+    {
+      "label": "optimized",
+      "summary": {
+        "startup_median_seconds": 26.8477,
+        "warm_command_median_seconds": 5.2645,
+        "rpc_median_seconds": 1.353
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "warm_command_seconds": [
+            7.8822,
+            6.9661,
+            6.0239
+          ],
+          "rpc_seconds": [
+            2.3517,
+            1.4741,
+            1.498
+          ],
+          "startup_events": [
+            {
+              "operation": "github:POST:graphql",
+              "seconds": 3.56905
+            },
+            {
+              "operation": "github:POST:repos/jldkiro/dev-agent/actions/workflows/worker.yml/dispatches",
+              "seconds": 2.2827
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 1.40247
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 2.96539
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532083184/artifacts",
+              "seconds": 1.16569
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532083184/artifacts",
+              "seconds": 1.19415
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532083184/artifacts",
+              "seconds": 1.90058
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532083184",
+              "seconds": 1.32204
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532083184/artifacts",
+              "seconds": 1.44864
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/artifacts/13637397981/zip",
+              "seconds": 0.93919
+            },
+            {
+              "operation": "ssh:status",
+              "seconds": 5.07878
+            }
+          ],
+          "startup_seconds": 29.6699,
+          "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42532083184",
+          "run_id": 42532083184,
+          "sha": "44a23e981844f5fdeadba2b117539ef01bef0c7b",
+          "download_seconds": 2.0143,
+          "project_pack_seconds": 3.6664,
+          "project_files": 1224,
+          "project_bytes": 38729604,
+          "project_wire_bytes": 21108468,
+          "project_upload_seconds": 7.5701,
+          "project_cached_snapshot_seconds": 3.5783,
+          "cleanup": {
+            "phase": "retired",
+            "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42532083184",
+            "ephemeral": true
+          },
+          "github_steps": [
+            {
+              "name": "Set up job",
+              "started_at": "2026-11-08T22:48:48Z",
+              "completed_at": "2026-11-08T22:48:49Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Bootstrap isolated development worker",
+              "started_at": "2026-11-08T22:48:49Z",
+              "completed_at": "2026-11-08T22:48:56Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Publish public connection information",
+              "started_at": "2026-11-08T22:48:56Z",
+              "completed_at": "2026-11-08T22:48:58Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Wait for activity-aware worker expiration",
+              "started_at": "2026-11-08T22:48:58Z",
+              "completed_at": "2026-11-08T22:49:56Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Report fixed failure status",
+              "started_at": "2026-11-08T22:49:56Z",
+              "completed_at": "2026-11-08T22:49:56Z",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Complete job",
+              "started_at": "2026-11-08T22:49:56Z",
+              "completed_at": "2026-11-08T22:49:56Z",
+              "conclusion": "success"
+            }
+          ],
+          "log_bytes": 12415,
+          "log_lines": 158,
+          "private_canaries_absent": true,
+          "canary_hashes": [
+            "faadbc4d950ffcac5893bb8eb2a6b9866464269aed1a9366ce1341a48748f22b",
+            "b81df2ab66ef75b5df2fb7c9090c31ebb43f61b2bc22f02cbd0239899b16b075",
+            "66b14818f3aeac107aa0ec349972e77961db18834bf76c96373d388d40785a0c",
+            "ea0478dce495fd168d47dfc0df973af96b4aad37539a1a6687e6a4d115172475"
+          ],
+          "job_log_lines": 72
+        },
+        {
+          "trial": 2,
+          "warm_command_seconds": [
+            4.5051,
+            4.0068,
+            4.0466
+          ],
+          "rpc_seconds": [
+            1.2209,
+            1.2114,
+            1.2319
+          ],
+          "startup_events": [
+            {
+              "operation": "github:POST:graphql",
+              "seconds": 0.57102
+            },
+            {
+              "operation": "github:POST:repos/jldkiro/dev-agent/actions/workflows/worker.yml/dispatches",
+              "seconds": 1.95298
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 0.96145
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 1.02333
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532191233/artifacts",
+              "seconds": 0.54867
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532191233/artifacts",
+              "seconds": 0.52393
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532191233/artifacts",
+              "seconds": 0.54945
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532191233",
+              "seconds": 0.62621
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532191233/artifacts",
+              "seconds": 0.56144
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532191233/artifacts",
+              "seconds": 0.80041
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/artifacts/13637861093/zip",
+              "seconds": 1.63257
+            },
+            {
+              "operation": "ssh:status",
+              "seconds": 0.63405
+            },
+            {
+              "operation": "ssh:status",
+              "seconds": 0.42365
+            },
+            {
+              "operation": "ssh:status",
+              "seconds": 1.51537
+            }
+          ],
+          "startup_seconds": 24.0255,
+          "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42532191233",
+          "run_id": 42532191233,
+          "sha": "8caece1ea9bf97e5730b24d8478a4f58be66257e",
+          "download_seconds": 1.6877,
+          "cleanup": {
+            "phase": "retired",
+            "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42532191233",
+            "ephemeral": true
+          },
+          "github_steps": [
+            {
+              "name": "Set up job",
+              "started_at": "2026-11-08T22:50:08Z",
+              "completed_at": "2026-11-08T22:50:09Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Bootstrap isolated development worker",
+              "started_at": "2026-11-08T22:50:09Z",
+              "completed_at": "2026-11-08T22:50:16Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Publish public connection information",
+              "started_at": "2026-11-08T22:50:16Z",
+              "completed_at": "2026-11-08T22:50:17Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Wait for activity-aware worker expiration",
+              "started_at": "2026-11-08T22:50:17Z",
+              "completed_at": "2026-11-08T22:50:47Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Report fixed failure status",
+              "started_at": "2026-11-08T22:50:47Z",
+              "completed_at": "2026-11-08T22:50:47Z",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Complete job",
+              "started_at": "2026-11-08T22:50:47Z",
+              "completed_at": "2026-11-08T22:50:47Z",
+              "conclusion": "success"
+            }
+          ],
+          "log_bytes": 12413,
+          "log_lines": 158,
+          "private_canaries_absent": true,
+          "canary_hashes": [
+            "cc4e1bb4433b8b0cc37bd2409c1b89a844b66034f47d700c93844cc0aa44f8bb",
+            "7d33bb3e1a70e7b9b97fb95ed3cc15eb4dbfe5b7aca9d48b43dd7e52bc607a9a",
+            "d7549e62fdab14417fa1938687221df2e61fb268e9ef42d95208467699086e8f",
+            "8de9251ef1dc0be926767754e93c989d5cebc463fb801b0ef9c361f0d25b12b3"
+          ],
+          "job_log_lines": 72
+        }
+      ]
+    },
+    {
+      "label": "optimized-final",
+      "summary": {
+        "startup_median_seconds": 32.8635,
+        "warm_command_median_seconds": 3.5256,
+        "rpc_median_seconds": 1.282
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "warm_command_seconds": [
+            3.1667,
+            3.1743,
+            3.9187
+          ],
+          "rpc_seconds": [
+            1.023,
+            1.1489,
+            1.1013
+          ],
+          "startup_events": [
+            {
+              "operation": "github:POST:graphql",
+              "seconds": 0.50244
+            },
+            {
+              "operation": "github:POST:repos/jldkiro/dev-agent/actions/workflows/worker.yml/dispatches",
+              "seconds": 1.51398
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 0.95343
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 0.83341
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532567444/artifacts",
+              "seconds": 0.66111
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532567444/artifacts",
+              "seconds": 0.66363
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532567444/artifacts",
+              "seconds": 0.50229
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532567444",
+              "seconds": 0.51247
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532567444/artifacts",
+              "seconds": 0.47728
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532567444/artifacts",
+              "seconds": 0.62086
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/artifacts/13638440549/zip",
+              "seconds": 0.66698
+            },
+            {
+              "operation": "ssh:status",
+              "seconds": 2.11845
+            }
+          ],
+          "startup_seconds": 17.6889,
+          "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42532567444",
+          "run_id": 42532567444,
+          "sha": "f56e461e142bb7c4011829c648dfa04cfb4d0748",
+          "download_seconds": 2.4435,
+          "project_pack_seconds": 5.3755,
+          "project_files": 1224,
+          "project_bytes": 38729604,
+          "project_wire_bytes": 21108468,
+          "project_upload_seconds": 61.2938,
+          "project_cached_snapshot_seconds": 3.5662,
+          "cleanup": {
+            "phase": "retired",
+            "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42532567444",
+            "ephemeral": true
+          },
+          "github_steps": [
+            {
+              "name": "Set up job",
+              "started_at": "2026-11-08T22:54:51Z",
+              "completed_at": "2026-11-08T22:54:52Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Bootstrap isolated development worker",
+              "started_at": "2026-11-08T22:54:52Z",
+              "completed_at": "2026-11-08T22:54:59Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Publish public connection information",
+              "started_at": "2026-11-08T22:54:59Z",
+              "completed_at": "2026-11-08T22:55:00Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Wait for activity-aware worker expiration",
+              "started_at": "2026-11-08T22:55:00Z",
+              "completed_at": "2026-11-08T22:56:34Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Report fixed failure status",
+              "started_at": "2026-11-08T22:56:34Z",
+              "completed_at": "2026-11-08T22:56:34Z",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Complete job",
+              "started_at": "2026-11-08T22:56:34Z",
+              "completed_at": "2026-11-08T22:56:34Z",
+              "conclusion": "success"
+            }
+          ],
+          "log_bytes": 12415,
+          "log_lines": 158,
+          "private_canaries_absent": true,
+          "canary_hashes": [
+            "d941b412f634aee88f1fc6b5ffcde2e249dc4a33d066ec96e928fb71ddfdb079",
+            "8a203253c8cad9a66a9960f264788cebcfdf6399d15e68fbb54d6a59859b2411",
+            "706897dcba6a9ed4518508335254d033128ad818afab39609315b29c7d7e3371",
+            "e0216b908936489962462e773ce966e4b93223050a4303629d39a6ea703ca39a"
+          ],
+          "job_log_lines": 72
+        },
+        {
+          "trial": 2,
+          "warm_command_seconds": [
+            4.0866,
+            3.517,
+            3.5342
+          ],
+          "rpc_seconds": [
+            3.0014,
+            2.3611,
+            1.4151
+          ],
+          "startup_events": [
+            {
+              "operation": "github:POST:graphql",
+              "seconds": 0.77125
+            },
+            {
+              "operation": "github:POST:repos/jldkiro/dev-agent/actions/workflows/worker.yml/dispatches",
+              "seconds": 1.53571
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 1.12688
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 31.24348
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42532716501/artifacts",
+              "seconds": 5.92779
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/artifacts/13638017286/zip",
+              "seconds": 0.96893
+            },
+            {
+              "operation": "ssh:status",
+              "seconds": 4.32938
+            }
+          ],
+          "startup_seconds": 48.0381,
+          "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42532716501",
+          "run_id": 42532716501,
+          "sha": "f56e461e142bb7c4011829c648dfa04cfb4d0748",
+          "download_seconds": 1.8586,
+          "cleanup": {
+            "phase": "retired",
+            "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42532716501",
+            "ephemeral": true
+          },
+          "github_steps": [
+            {
+              "name": "Set up job",
+              "started_at": "2026-11-08T22:56:46Z",
+              "completed_at": "2026-11-08T22:56:47Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Bootstrap isolated development worker",
+              "started_at": "2026-11-08T22:56:47Z",
+              "completed_at": "2026-11-08T22:56:53Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Publish public connection information",
+              "started_at": "2026-11-08T22:56:53Z",
+              "completed_at": "2026-11-08T22:56:54Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Wait for activity-aware worker expiration",
+              "started_at": "2026-11-08T22:56:54Z",
+              "completed_at": "2026-11-08T22:57:50Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Report fixed failure status",
+              "started_at": "2026-11-08T22:57:50Z",
+              "completed_at": "2026-11-08T22:57:50Z",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Complete job",
+              "started_at": "2026-11-08T22:57:50Z",
+              "completed_at": "2026-11-08T22:57:50Z",
+              "conclusion": "success"
+            }
+          ],
+          "log_bytes": 12429,
+          "log_lines": 158,
+          "private_canaries_absent": true,
+          "canary_hashes": [
+            "d65e5b4968214c9ae0eddee765445ae3b4c913c6b050682ce79734c0168d32e1",
+            "8b2076af8c30653cd2f17f9d01bea5f43beddfc29e0093566180c531d97d9310",
+            "7ae59414b8d6f0d7cec45c0a66f25944193225b37f41568a1aece45b429bdc47",
+            "713ee726cf30df07d89d4a07847b2e1aea811f7b5a499a4330240283d646d311"
+          ],
+          "job_log_lines": 72
+        }
+      ]
+    },
+    {
+      "label": "optimized-ready-final",
+      "summary": {
+        "startup_median_seconds": 21.993949999999998,
+        "warm_command_median_seconds": 3.82375,
+        "rpc_median_seconds": 1.68415
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "warm_command_seconds": [
+            3.7827,
+            3.4987,
+            3.8648
+          ],
+          "rpc_seconds": [
+            1.3284,
+            1.7802,
+            1.3371
+          ],
+          "startup_events": [
+            {
+              "operation": "github:POST:graphql",
+              "seconds": 0.46995
+            },
+            {
+              "operation": "github:POST:repos/jldkiro/dev-agent/actions/workflows/worker.yml/dispatches",
+              "seconds": 1.66848
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 0.88112
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 1.08722
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533908810/artifacts",
+              "seconds": 0.45939
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533908810/artifacts",
+              "seconds": 0.56242
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533908810/artifacts",
+              "seconds": 0.53677
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533908810",
+              "seconds": 0.45086
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533908810/artifacts",
+              "seconds": 0.72024
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533908810/artifacts",
+              "seconds": 0.57932
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533908810/artifacts",
+              "seconds": 0.47847
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/artifacts/13638517649/zip",
+              "seconds": 0.85578
+            },
+            {
+              "operation": "ssh:status",
+              "seconds": 3.92768
+            }
+          ],
+          "startup_seconds": 21.8745,
+          "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42533908810",
+          "run_id": 42533908810,
+          "sha": "e25bda0b4aaf6608dcbb3ce1279fcdde26d94c5f",
+          "download_seconds": 1.4315,
+          "cleanup": {
+            "phase": "retired",
+            "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42533908810",
+            "ephemeral": true
+          },
+          "github_steps": [
+            {
+              "name": "Set up job",
+              "started_at": "2026-11-08T23:10:56Z",
+              "completed_at": "2026-11-08T23:10:56Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Bootstrap isolated development worker",
+              "started_at": "2026-11-08T23:10:56Z",
+              "completed_at": "2026-11-08T23:11:05Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Publish public connection information",
+              "started_at": "2026-11-08T23:11:05Z",
+              "completed_at": "2026-11-08T23:11:06Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Wait for activity-aware worker expiration",
+              "started_at": "2026-11-08T23:11:06Z",
+              "completed_at": "2026-11-08T23:11:32Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Report fixed failure status",
+              "started_at": "2026-11-08T23:11:32Z",
+              "completed_at": "2026-11-08T23:11:32Z",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Complete job",
+              "started_at": "2026-11-08T23:11:32Z",
+              "completed_at": "2026-11-08T23:11:32Z",
+              "conclusion": "success"
+            }
+          ],
+          "log_bytes": 12419,
+          "log_lines": 158,
+          "private_canaries_absent": true,
+          "canary_hashes": [
+            "ca5de7c59bdf5fa54f3e3b9e454abf9a1f2326832ebbdc0468c6e09df095874c",
+            "4ca2480b6d6f4feb02d2f46678921d452f1ef55d13400a1572d997257aec32b2",
+            "b57d8306a7b504620eafb67e5ff57f963be6eaf574c84bcb75537760e542e83e",
+            "5a3736e05d0a9876bfcf523321cdce2f2728233d1f5be434f68b601a11aedda4"
+          ],
+          "job_log_lines": 72
+        },
+        {
+          "trial": 2,
+          "warm_command_seconds": [
+            3.9938,
+            3.5007,
+            4.5525
+          ],
+          "rpc_seconds": [
+            2.5824,
+            1.7855,
+            1.5881
+          ],
+          "startup_events": [
+            {
+              "operation": "github:POST:graphql",
+              "seconds": 0.82045
+            },
+            {
+              "operation": "github:POST:repos/jldkiro/dev-agent/actions/workflows/worker.yml/dispatches",
+              "seconds": 2.56158
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 1.45997
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/workflows/worker.yml/runs",
+              "seconds": 0.99682
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533984946/artifacts",
+              "seconds": 0.38751
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533984946/artifacts",
+              "seconds": 0.47962
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533984946/artifacts",
+              "seconds": 0.60669
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533984946",
+              "seconds": 0.52549
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533984946/artifacts",
+              "seconds": 0.53
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533984946/artifacts",
+              "seconds": 0.47612
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42533984946/artifacts",
+              "seconds": 0.73339
+            },
+            {
+              "operation": "github:GET:repos/jldkiro/dev-agent/actions/artifacts/13637989469/zip",
+              "seconds": 0.82602
+            },
+            {
+              "operation": "ssh:status",
+              "seconds": 2.4403
+            }
+          ],
+          "startup_seconds": 22.1134,
+          "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42533984946",
+          "run_id": 42533984946,
+          "sha": "e25bda0b4aaf6608dcbb3ce1279fcdde26d94c5f",
+          "download_seconds": 2.2662,
+          "cleanup": {
+            "phase": "retired",
+            "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42533984946",
+            "ephemeral": true
+          },
+          "github_steps": [
+            {
+              "name": "Set up job",
+              "started_at": "2026-11-08T23:11:49Z",
+              "completed_at": "2026-11-08T23:11:50Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Bootstrap isolated development worker",
+              "started_at": "2026-11-08T23:11:50Z",
+              "completed_at": "2026-11-08T23:11:59Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Publish public connection information",
+              "started_at": "2026-11-08T23:11:59Z",
+              "completed_at": "2026-11-08T23:12:00Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Wait for activity-aware worker expiration",
+              "started_at": "2026-11-08T23:12:00Z",
+              "completed_at": "2026-11-08T23:12:28Z",
+              "conclusion": "success"
+            },
+            {
+              "name": "Report fixed failure status",
+              "started_at": "2026-11-08T23:12:28Z",
+              "completed_at": "2026-11-08T23:12:28Z",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Complete job",
+              "started_at": "2026-11-08T23:12:28Z",
+              "completed_at": "2026-11-08T23:12:29Z",
+              "conclusion": "success"
+            }
+          ],
+          "log_bytes": 12415,
+          "log_lines": 158,
+          "private_canaries_absent": true,
+          "canary_hashes": [
+            "16641723ed84d97b53fdc55473e67d714691a9c7a603ca29d083651ebff92a2a",
+            "7f6a4f5cd3ce6c3b99b8aa29725272c2314fb792452ec385bef313409314a397",
+            "11f1a2169f79c452cb63582dbfd000deb2076c2843f36ce41c4687647cf78748",
+            "aa7b4b9699a97c8d08e40261da821c8f938a256308a6a23bd36085eadc962cc5"
+          ],
+          "job_log_lines": 72
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Two fresh workers and six tiny CLI commands per successful measurement stage; not a latency SLA.",
+    "Cold startup excludes project packaging/upload; warm commands include tiny-project synchronization and output.",
+    "Large-project packaging is affected by local filesystem cache; first-upload time varies with the network.",
+    "The intermediate workers ran 44a23e9; the client error-reporting patch 8caece1 did not change its normal path.",
+    "A cache hit still rereads local files and extracts a fresh remote workspace."
+  ],
+  "log_count_definition": "log_lines is the concatenation of all ZIP text entries, including aggregate/per-step duplication and separators. job_log_lines counts only the aggregate job log. All entries were scanned for canaries.",
+  "failed_attempts": [
+    {
+      "run_id": 42530488541,
+      "stage": "prototype",
+      "reason": "CLI parser shadowed the execution function; no customer command ran.",
+      "fixed_by": "44a23e9"
+    },
+    {
+      "run_id": 42531105017,
+      "stage": "compressed-upload",
+      "reason": "Large upload lost its SSH transport; a subsequent explicit diagnostic upload succeeded. No command was replayed.",
+      "fixed_by": "8caece1 reports remote rejection instead of masking it with BrokenPipe"
+    },
+    {
+      "run_id": 42533149074,
+      "stage": "startup",
+      "reason": "Quick Tunnel hostname returned NXDOMAIN before public connectivity was ready; no customer command ran.",
+      "fixed_by": "e25bda0 verifies public SSH before publishing readiness"
+    }
+  ],
+  "ha_project_qualification": {
+    "date": "2026-11-08",
+    "complete": true,
+    "workload": "Compile src/ha_mcp from the selected local snapshot with Python 3.13; not the functional test suite.",
+    "calls": [
+      {
+        "label": "first_project_and_python_install",
+        "cli_seconds": 14.9714,
+        "remote_compile_seconds": 0.4105,
+        "events": [
+          {
+            "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42534324642",
+            "seconds": 0.7371
+          },
+          {
+            "operation": "ssh-channel:channel",
+            "seconds": 1.23435
+          },
+          {
+            "operation": "ssh-channel:prepare",
+            "seconds": 0.07223
+          },
+          {
+            "operation": "ssh-channel:sync",
+            "seconds": 6.68489
+          },
+          {
+            "operation": "ssh-channel:submit",
+            "seconds": 0.07313
+          }
+        ]
+      },
+      {
+        "label": "same_project_cached_snapshot",
+        "cli_seconds": 6.5579,
+        "remote_compile_seconds": 0.4125,
+        "events": [
+          {
+            "operation": "github:GET:repos/jldkiro/dev-agent/actions/runs/42534324642",
+            "seconds": 0.69163
+          },
+          {
+            "operation": "ssh-channel:channel",
+            "seconds": 1.45385
+          },
+          {
+            "operation": "ssh-channel:prepare",
+            "seconds": 0.4789
+          },
+          {
+            "operation": "ssh-channel:submit",
+            "seconds": 0.06918
+          }
+        ]
+      }
+    ],
+    "startup_seconds": 21.2465,
+    "run_id": 42534324642,
+    "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42534324642",
+    "sha": "e25bda0b4aaf6608dcbb3ce1279fcdde26d94c5f",
+    "cleanup": {
+      "phase": "retired",
+      "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42534324642",
+      "ephemeral": true
+    },
+    "private_canary_absent": true,
+    "canary_sha256": "d454170be4dc7f26d20085e1e76d92855e0bd697e679cc5c16e19015db1c8800"
+  },
+  "cleanup": [
+    {
+      "run_id": 42528833786,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42529030721,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42530488541,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42531105017,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42531623799,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42532083184,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42532191233,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42532567444,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42532716501,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42533149074,
+      "status": "completed",
+      "conclusion": "cancelled",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42533295691,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42533908810,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42533984946,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    },
+    {
+      "run_id": 42534324642,
+      "status": "completed",
+      "conclusion": "success",
+      "artifacts_remaining": 0,
+      "local_private_key_absent": true
+    }
+  ],
+  "stream_qualification": {
+    "complete": true,
+    "date": "2026-11-08",
+    "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42533295691",
+    "run_id": 42533295691,
+    "sha": "62e59b27039ba7004b0eab0d411e98745ff53026",
+    "large_stream_and_exit_42": true,
+    "concurrent_wait_cancel_exit_130": true,
+    "cleanup": {
+      "phase": "retired",
+      "run_url": "https://github.com/jldkiro/dev-agent/actions/runs/42533295691",
+      "ephemeral": true
+    },
+    "private_canaries_absent": true
+  }
+}

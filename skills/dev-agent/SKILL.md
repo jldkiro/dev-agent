@@ -39,6 +39,8 @@ dev-agent stop
 Une commande reçoit un snapshot neuf du projet. Ne pas supposer que les fichiers
 produits par une autre commande figurent dans ce snapshot; récupérer les résultats
 localement ou choisir une seule commande qui réalise l'enchaînement voulu.
+Un snapshot identique évite un nouvel upload, mais produit quand même un nouvel
+espace de travail. Ce cache appartient au worker courant et disparaît avec lui.
 Le cache uv peut être réutilisé pendant la vie du worker. Une commande active
 survit à la déconnexion SSH; elle reste limitée par la durée maximale du job.
 Un conteneur lancé avec `docker run -d` ne compte pas, à lui seul, comme une
@@ -48,3 +50,7 @@ doit protéger la session, sans ajouter de keepalive artificiel.
 `stop` refuse les commandes actives; `stop --force` signifie les abandonner
 explicitement. Aucun jeton Cloudflare, T3 ou fournisseur LLM n'est nécessaire sur
 le worker. L'authentification GitHub pour allouer le compute reste sur le client.
+
+Les sorties métier restent sur le worker et passent par SSH; les logs Actions
+ne donnent que le cycle de vie et les métadonnées publiques. Lire les sorties
+avec `dev-agent logs JOB` ou `wait JOB`, puis récupérer les résultats utiles.
