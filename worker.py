@@ -122,9 +122,16 @@ class Store:
             self.check(c, session, writable=True)
             self.activity(c)
             c.execute("INSERT INTO transfers VALUES(?,?,?)", (lease, os.getpid(), time.monotonic()))
+        last_beat = time.monotonic()
         def beat():
+            nonlocal last_beat
+            now = time.monotonic()
+            if now - last_beat < 1:
+                return
             with self.transaction() as c:
-                c.execute("UPDATE transfers SET beat=? WHERE id=?", (time.monotonic(), lease))
+                c.execute("UPDATE transfers SET beat=? WHERE id=?", (now, lease))
+                self.activity(c)
+            last_beat = now
         try:
             yield beat
         finally:
@@ -434,7 +441,7 @@ def rpc(store, expected_session, source, output, allow_channel=True):
         if not allow_channel:
             raise ValueError("Nested channels are not supported")
         with store.transaction() as c:
-            store.check(c, expected_session)
+            store.check(c, expected_session, writable=bool(request.get("writable", False)))
         output.write(b'{"ok":true,"result":{"channel":1,"ephemeral":true}}\n')
         output.flush()
         while rpc(store, expected_session, source, output, allow_channel=False):

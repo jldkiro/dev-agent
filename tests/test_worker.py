@@ -127,6 +127,22 @@ class StorageSafety(unittest.TestCase):
             worker.supervise(self.store, "test-session")
         self.assertEqual(output.getvalue(), "DEV_AGENT_STOPPED reason=unknown\n")
 
+    def test_writable_channel_refuses_retiring_worker_before_upload(self):
+        self.store.stop("test-session")
+        data = b'{"session":"test-session","op":"channel","writable":true}\n'
+        with self.assertRaises(RuntimeError):
+            worker.rpc(self.store, "test-session", io.BytesIO(data), io.BytesIO())
+
+    def test_transfer_progress_renews_activity_but_not_every_chunk(self):
+        with self.store.transfer("test-session") as beat:
+            before = self.store.status("test-session")["activity"]
+            for _ in range(50):
+                beat()
+            self.assertEqual(self.store.status("test-session")["activity"], before)
+            time.sleep(1.05)
+            beat()
+            self.assertGreater(self.store.status("test-session")["activity"], before)
+
     def test_public_supervisor_exception_is_a_fixed_message_only(self):
         from contextlib import redirect_stdout
         output = io.StringIO()

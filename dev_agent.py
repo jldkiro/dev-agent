@@ -49,16 +49,17 @@ class RemoteRejected(RuntimeError):
 
 class Channel:
     """One pinned SSH connection for upload, submit and incremental job output."""
-    def __init__(self, session, state):
+    def __init__(self, session, state, *, writable=False):
         self.session = session
         self.state = state
+        self.writable = writable
 
     def __enter__(self):
         self.errors = tempfile.TemporaryFile()
         config = self.session.root / self.state["request_id"] / "ssh_config"
         self.process = subprocess.Popen(["ssh", "-F", str(config), "dev-agent-worker", "rpc"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.errors)
         try:
-            assert self.request({"op": "channel"})["channel"] == 1
+            assert self.request({"op": "channel", "writable": self.writable})["channel"] == 1
         except BaseException:
             self.__exit__(None, None, None)
             raise
@@ -263,7 +264,7 @@ class Session:
         state["phase"] = "ready"
         self.save(state)
 
-    def ensure(self):
+    def ensure(self, *, preflight=True):
         cloudflared()
         with locked(self.root / "allocation.lock"):
             state = self.read()
@@ -273,6 +274,8 @@ class Session:
                     self._retire_locked(state)
                     state = None
             if state and state.get("phase") == "ready":
+                if not preflight and "channel" in state.get("connection", {}).get("capabilities", []):
+                    return state  # The authenticated writable channel checks phase before accepting work.
                 result = self.rpc({"op": "status"}, state=state)
                 if result["phase"] == "open":
                     return state
@@ -571,9 +574,9 @@ def show(value):
 
 
 def execute(session, args, argv):
-    state = session.ensure()
+    state = session.ensure(preflight=False)
     with ExitStack() as stack:
-        channel = stack.enter_context(Channel(session, state)) if "channel" in state.get("connection", {}).get("capabilities", []) else None
+        channel = stack.enter_context(Channel(session, state, writable=True)) if "channel" in state.get("connection", {}).get("capabilities", []) else None
         synchronized = synchronize(session, state, args.project, channel=channel)
         job = uuid.uuid4().hex
         record = {"job": job, "request_id": state["request_id"], "run_id": state["run_id"], "run_url": state["run_url"], "workspace": synchronized["workspace"], "submitted_at": time.time(), "status": "submission-pending", "ephemeral": True}
