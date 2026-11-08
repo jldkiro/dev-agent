@@ -17,6 +17,9 @@ Requirements on the client: Python 3.12+, uv, GitHub CLI, OpenSSH and cloudflare
 never pooled across sessions. The Windows setup installs a `dev-agent` launcher;
 the portable form is `uv run -s /path/to/dev-agent/dev_agent.py ...`.
 
+Run `uv run -s install.py` from this checkout to install the thin launcher and a
+Codex skill linked to `skills/dev-agent`. It refuses to replace unrelated files.
+
 Authenticate GitHub CLI in a dedicated profile. On Windows this installation
 uses `%LOCALAPPDATA%/JLDIAOS/dev-agent/gh`, separate from the ordinary gh profile.
 The client honors `DEV_AGENT_GH_CONFIG_DIR` and `DEV_AGENT_STATE_DIR` when needed.

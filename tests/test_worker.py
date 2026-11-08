@@ -18,6 +18,7 @@ import tarfile
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -142,6 +143,61 @@ class StorageSafety(unittest.TestCase):
             self.assertTrue(tf.getmember("tracked.sh").mode & 0o111)
             self.assertIn("untracked.py", tf.getnames())
             self.assertNotIn("ignored.bin", tf.getnames())
+
+
+class ClientIsolation(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="dev-agent-client-")
+        self.patches = [patch.object(dev_agent, "CONFIG_ROOT", Path(self.temp.name)), patch.dict(os.environ, {"CODEX_THREAD_ID": "client-isolation-test"})]
+        for item in self.patches:
+            item.start()
+        self.session = dev_agent.Session()
+
+    def tearDown(self):
+        for item in reversed(self.patches):
+            item.stop()
+        self.temp.cleanup()
+
+    def test_job_path_traversal_is_rejected_before_file_access(self):
+        with self.assertRaises(ValueError):
+            self.session.job_record("../../private")
+
+    def test_connection_metadata_must_match_every_allocation_identity(self):
+        state = {"request_id": "a" * 32, "run_id": 123, "sha": "b" * 40}
+        instance = self.session.root / state["request_id"]
+        instance.mkdir()
+        connection = {"repository": dev_agent.REPOSITORY, "sha": state["sha"], "run_id": state["run_id"], "session_id": self.session.id, "request_id": state["request_id"], "protocol": 1, "idle_seconds": 900, "ephemeral": True, "url": "https://fixture.trycloudflare.com", "host_key": "ssh-ed25519 AAAA"}
+        for key, wrong in [("repository", "other/repo"), ("sha", "c" * 40), ("run_id", 456), ("session_id", "wrong-session"), ("request_id", "wrong-request")]:
+            with self.subTest(key=key), self.assertRaises(RuntimeError):
+                self.session.configure_ssh(state, {**connection, key: wrong})
+            self.assertFalse((instance / "known_hosts").exists())
+
+    def test_retiring_old_worker_cannot_overwrite_a_new_allocation(self):
+        old = {"request_id": "a" * 32, "phase": "ready"}
+        new = {"request_id": "b" * 32, "phase": "ready"}
+        for state in (old, new):
+            instance = self.session.root / state["request_id"]
+            instance.mkdir()
+            (instance / "identity").write_text("test fixture, not an SSH key")
+        self.session.save(new)
+        self.session.retire(old)
+        self.assertEqual(self.session.read(), new)
+        self.assertFalse((self.session.root / old["request_id"] / "identity").exists())
+        self.assertTrue((self.session.root / new["request_id"] / "identity").exists())
+
+    def test_stale_upload_cannot_restore_a_retired_worker_state(self):
+        old = {"request_id": "a" * 32, "phase": "ready"}
+        new = {"request_id": "b" * 32, "phase": "ready"}
+        self.session.save(old)
+        project = Path(self.temp.name) / "project"
+        project.mkdir()
+        (project / "source.py").write_text("pass")
+        def replacement(*args, **kwargs):
+            self.session.save(new)
+            return {"workspace": "fixture"}
+        with patch.object(self.session, "rpc", side_effect=replacement), self.assertRaises(RuntimeError):
+            dev_agent.synchronize(self.session, old, project)
+        self.assertEqual(self.session.read(), new)
 
 
 @unittest.skipUnless(os.name == "posix" and Path("/proc").exists(), "Linux process controller")

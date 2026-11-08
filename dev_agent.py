@@ -31,6 +31,10 @@ FINISHED = {"completed", "failed", "cancelled", "lost"}
 EXCLUDED = {".git", ".ssh", ".codex", ".claude", ".config", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "local"}
 
 
+class RemoteRejected(RuntimeError):
+    """A complete negative RPC response proves that a request was rejected."""
+
+
 def command(args, *, data=None, timeout=60, check=True):
     result = subprocess.run(args, input=data, capture_output=True, timeout=timeout)
     if check and result.returncode:
@@ -176,7 +180,7 @@ class Session:
             if state and state.get("run_id"):
                 run = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}")
                 if run["status"] == "completed":
-                    self.retire(state)
+                    self._retire_locked(state)
                     state = None
             if state and state.get("phase") == "ready":
                 result = self.rpc({"op": "status"}, state=state)
@@ -186,7 +190,7 @@ class Session:
                 while time.monotonic() < deadline:
                     run = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}")
                     if run["status"] == "completed":
-                        self.retire(state)
+                        self._retire_locked(state)
                         state = None
                         break
                     time.sleep(2)
@@ -216,13 +220,17 @@ class Session:
                 if not state.get("run_id"):
                     runs = gh(f"repos/{REPOSITORY}/actions/workflows/worker.yml/runs?event=workflow_dispatch&per_page=100")["workflow_runs"]
                     title = "dev-agent " + self.id + " " + state["request_id"]
-                    matches = [r for r in runs if r["display_title"] == title and r["head_sha"] == state["sha"]]
+                    matches = [r for r in runs if r["display_title"] == title]
                     if len(matches) > 1:
                         raise RuntimeError("Duplicate allocations detected; inspect and stop the extra jobs")
                     if matches:
                         state["run_id"] = matches[0]["id"]
                         state["run_url"] = matches[0]["html_url"]
                         self.save(state)
+                        if matches[0]["head_sha"] != state["sha"]:
+                            if matches[0]["status"] != "completed":
+                                gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}/cancel", "POST")
+                            raise RuntimeError("Controller revision changed during allocation; this exact run was identified and cancelled. Reconcile it before starting another.")
                 if state.get("run_id"):
                     run = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}")
                     if run["status"] == "completed":
@@ -247,6 +255,10 @@ class Session:
             raise TimeoutError("Worker not ready after five minutes. Its allocation is recorded; use status/start to continue, not a new manual dispatch.")
 
     def retire(self, state):
+        with locked(self.root / "allocation.lock"):
+            self._retire_locked(state)
+
+    def _retire_locked(self, state):
         instance = self.root / state["request_id"]
         (instance / "identity").unlink(missing_ok=True)
         if state.get("run_id"):
@@ -256,7 +268,9 @@ class Session:
         state["phase"] = "retired"
         state["retired_at"] = time.time()
         write_json(instance / "retired.json", state)
-        self.save(state)
+        current = self.read()
+        if current and current["request_id"] == state["request_id"]:
+            self.save(state)
 
     def rpc(self, payload, *, state=None, upload=None, download=None):
         state = state or self.read()
@@ -279,7 +293,7 @@ class Session:
                     raise RuntimeError("SSH RPC failed: " + errors.read().decode(errors="replace")[-1500:])
                 response = json.loads(header)
                 if not response.get("ok"):
-                    raise RuntimeError(response.get("error", "Worker rejected request"))
+                    raise RemoteRejected(response.get("error", "Worker rejected request"))
                 if download:
                     remaining = response["bytes"]
                     digest = hashlib.sha256()
@@ -373,9 +387,14 @@ def synchronize(session, state, project):
         with archive.open("rb") as f:
             digest = hashlib.file_digest(f, "sha256").hexdigest()
         result = session.rpc({"op": "sync", "workspace": workspace, "bytes": archive.stat().st_size, "sha256": digest}, state=state, upload=archive)
-    state["workspace"] = workspace
-    state["project"] = str(Path(project).resolve())
-    session.save(state)
+    with locked(session.root / "allocation.lock"):
+        current = session.read()
+        if not current or current["request_id"] != state["request_id"] or current["phase"] != "ready":
+            raise RuntimeError("Upload belonged to a worker retired during the transfer; no command was submitted")
+        current["workspace"] = workspace
+        current["project"] = str(Path(project).resolve())
+        session.save(current)
+        state.update(current)
     return result
 
 
@@ -454,6 +473,8 @@ def main():
         argv = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
         if not argv:
             parser.error("run requires a command after --")
+        if not Path(args.project).is_dir():
+            raise ValueError("The explicitly selected project directory does not exist")
         state = session.ensure()
         synchronized = synchronize(session, state, args.project)
         job = uuid.uuid4().hex
@@ -461,6 +482,10 @@ def main():
         write_json(session.root / "jobs" / (job + ".json"), record)
         try:
             session.rpc({"op": "submit", "job": job, "workspace": record["workspace"], "cwd": args.cwd, "argv": argv, "env": {}}, state=state)
+        except RemoteRejected as error:
+            record.update({"status": "submission-rejected", "error": str(error)})
+            write_json(session.root / "jobs" / (job + ".json"), record)
+            raise
         except Exception:
             # Reconcile by identifier; no second submit or worker allocation.
             try:
@@ -491,7 +516,11 @@ def main():
         temporary = destination.with_name(destination.name + "." + uuid.uuid4().hex + ".download")
         try:
             result = session.rpc({"op": "get", "workspace": record["workspace"], "path": args.remote}, state=state, download=temporary)
-            temporary.replace(destination)
+            if args.overwrite:
+                temporary.replace(destination)
+            else:
+                os.link(temporary, destination)  # Atomic no-clobber, even if another process created the destination.
+                temporary.unlink()
         finally:
             temporary.unlink(missing_ok=True)
         show({"saved": str(destination), "bytes": result["bytes"], "sha256": result["sha256"]})
