@@ -68,7 +68,7 @@ class Store:
 
     def initialize(self, session, idle=IDLE_SECONDS):
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        for name in ("jobs", "workspaces"):
+        for name in ("jobs", "workspaces", "archives"):
             (self.root / name).mkdir(exist_ok=True, mode=0o700)
         with self.transaction() as c:
             c.executescript("""
@@ -156,30 +156,60 @@ class Store:
                         beat()
                 if digest.hexdigest() != request["sha256"]:
                     raise ValueError("Archive digest mismatch")
-                extracted = temporary / "files"
-                extracted.mkdir()
-                total = count = 0
-                with tarfile.open(archive, "r:") as tf:
-                    for member in tf:
-                        if not member.isfile():
-                            raise ValueError("Only regular files can be uploaded")
-                        total += member.size
-                        count += 1
-                        if total > MAX_ARCHIVE or count > 50000:
-                            raise ValueError("Archive expansion exceeds limit")
-                        target = contained(extracted, member.name)
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        with tf.extractfile(member) as source, target.open("wb") as out:
-                            shutil.copyfileobj(source, out, 1024 * 1024)
-                        target.chmod(0o755 if member.mode & 0o111 else 0o644)
-                        beat()
-                if destination.exists():
-                    raise ValueError("Workspace identifier already exists")
-                extracted.rename(destination)
-                return {"workspace": workspace, "files": count, "bytes": total, "ephemeral": True}
+                result = self.extract(archive, temporary, destination, beat)
+                cached = self.root / "archives" / digest.hexdigest()
+                archive.replace(cached)
+                cached.chmod(0o400)
+                return {"workspace": workspace, **result, "reused": False, "ephemeral": True}
             finally:
                 if temporary.resolve().parent == (self.root / "workspaces").resolve():
                     shutil.rmtree(temporary)
+
+    def extract(self, archive, temporary, destination, beat):
+        extracted = temporary / "files"
+        extracted.mkdir()
+        total = count = 0
+        with tarfile.open(archive, "r:*") as tf:
+            for member in tf:
+                if not member.isfile():
+                    raise ValueError("Only regular files can be uploaded")
+                total += member.size
+                count += 1
+                if total > MAX_ARCHIVE or count > 50000:
+                    raise ValueError("Archive expansion exceeds limit")
+                target = contained(extracted, member.name)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with tf.extractfile(member) as source, target.open("wb") as out:
+                    shutil.copyfileobj(source, out, 1024 * 1024)
+                target.chmod(0o755 if member.mode & 0o111 else 0o644)
+                beat()
+        if destination.exists():
+            raise ValueError("Workspace identifier already exists")
+        extracted.rename(destination)
+        return {"files": count, "bytes": total}
+
+    def prepare(self, session, request):
+        digest = request["sha256"]
+        if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise ValueError("Invalid source digest")
+        workspace = identifier(request["workspace"])
+        archive = self.root / "archives" / digest
+        with self.transfer(session) as beat:
+            if not archive.is_file():
+                return {"need_upload": True}
+            with archive.open("rb") as source:
+                actual = hashlib.file_digest(source, "sha256").hexdigest()
+            if actual != digest:
+                archive.unlink()
+                return {"need_upload": True}
+            temporary = self.root / "workspaces" / ("prepare-" + uuid.uuid4().hex)
+            temporary.mkdir(mode=0o700)
+            try:
+                result = self.extract(archive, temporary, self.root / "workspaces" / workspace, beat)
+            finally:
+                if temporary.resolve().parent == (self.root / "workspaces").resolve():
+                    shutil.rmtree(temporary)
+        return {"workspace": workspace, **result, "reused": True, "ephemeral": True}
 
     def submit(self, session, request):
         job_id = identifier(request["job"])
@@ -231,6 +261,25 @@ class Store:
             self.activity(c)
         return self.job(session, job_id)
 
+    def watch(self, session, request, output):
+        offsets = {name + "_offset": request.get(name + "_offset", 0) for name in ("stdout", "stderr")}
+        last_status = None
+        last_sent = 0
+        while True:
+            result = self.poll(session, {"job": request["job"], **offsets})
+            now = time.monotonic()
+            finished = result["status"] in FINISHED and result["stdout_eof"] and result["stderr_eof"]
+            if finished or result["stdout"] or result["stderr"] or result["status"] != last_status or now - last_sent >= 10:
+                output.write((json.dumps({"ok": True, "result": result}) + "\n").encode())
+                output.flush()
+                last_sent = now
+                last_status = result["status"]
+                for name in ("stdout", "stderr"):
+                    offsets[name + "_offset"] = result[name + "_offset"]
+            if finished:
+                return
+            time.sleep(0.2)
+
     def stop(self, session, force=False):
         with self.transaction() as c:
             self.check(c, session)
@@ -272,6 +321,7 @@ def serve(store, session, idle=IDLE_SECONDS, lifetime=21000, tick=0.5):
     if os.name != "posix" or not Path("/proc").is_dir():
         raise RuntimeError("The worker controller requires Linux; the client is portable")
     store.initialize(session, idle)
+    (store.root / "controller.pid").write_text(str(os.getpid()))
     running = {}
     interrupted = False
     def interrupt(*_):
@@ -353,18 +403,52 @@ def serve(store, session, idle=IDLE_SECONDS, lifetime=21000, tick=0.5):
             item["err"].close()
 
 
-def rpc(store, expected_session, source, output):
+def supervise(store, session):
+    """Only fixed, allowlisted lifecycle messages may reach Actions stdout."""
+    allowed = {"requested", "idle-timeout", "hard-limit", "signal"}
+    while True:
+        state = store.status(session)
+        if state["phase"] == "closed":
+            reason = state["reason"] if state["reason"] in allowed else "unknown"
+            print("DEV_AGENT_STOPPED reason=" + reason, flush=True)
+            return
+        pid = int((store.root / "controller.pid").read_text())
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            raise RuntimeError("Controller exited without closing state") from None
+        time.sleep(2)
+
+
+def rpc(store, expected_session, source, output, allow_channel=True):
     line = source.readline(MAX_HEADER + 1)
+    if not line:
+        return False
     if len(line) > MAX_HEADER:
         raise ValueError("Request header too large")
     request = json.loads(line)
     if request.get("session") != expected_session:
         raise PermissionError("Wrong session")
     op = request.get("op")
+    if op == "channel":
+        if not allow_channel:
+            raise ValueError("Nested channels are not supported")
+        with store.transaction() as c:
+            store.check(c, expected_session)
+        output.write(b'{"ok":true,"result":{"channel":1,"ephemeral":true}}\n')
+        output.flush()
+        while rpc(store, expected_session, source, output, allow_channel=False):
+            pass
+        return True
+    if op == "watch":
+        store.watch(expected_session, request, output)
+        return True
     if op == "status":
         result = store.status(expected_session)
     elif op == "sync":
         result = store.sync(expected_session, request, source)
+    elif op == "prepare":
+        result = store.prepare(expected_session, request)
     elif op == "submit":
         result = store.submit(expected_session, request)
     elif op == "poll":
@@ -388,16 +472,17 @@ def rpc(store, expected_session, source, output):
                     output.write(data)
                     output.flush()
                     beat()
-        return
+        return True
     else:
         raise ValueError("Unsupported operation")
     output.write((json.dumps({"ok": True, "result": result}) + "\n").encode())
     output.flush()
+    return True
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["serve", "rpc"])
+    parser.add_argument("mode", choices=["serve", "rpc", "supervise"])
     parser.add_argument("--root", required=True)
     parser.add_argument("--session", required=True)
     parser.add_argument("--idle-seconds", type=float, default=IDLE_SECONDS)
@@ -407,6 +492,12 @@ def main():
     store = Store(args.root)
     if args.mode == "serve":
         serve(store, identifier(args.session), args.idle_seconds, args.lifetime_seconds)
+    elif args.mode == "supervise":
+        try:
+            supervise(store, identifier(args.session))
+        except Exception:
+            print("DEV_AGENT_CONTROLLER_FAILED", flush=True)
+            raise SystemExit(1) from None
     else:
         try:
             rpc(store, identifier(args.session), sys.stdin.buffer, sys.stdout.buffer)

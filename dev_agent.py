@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import argparse
 import base64
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+import gzip
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import stat
 import shutil
 import subprocess
 import sys
@@ -33,6 +35,67 @@ EXCLUDED = {".git", ".ssh", ".agents", ".codex", ".claude", ".config", ".aws", "
 
 class RemoteRejected(RuntimeError):
     """A complete negative RPC response proves that a request was rejected."""
+
+
+class Channel:
+    """One pinned SSH connection for upload, submit and incremental job output."""
+    def __init__(self, session, state):
+        self.session = session
+        self.state = state
+
+    def __enter__(self):
+        self.errors = tempfile.TemporaryFile()
+        config = self.session.root / self.state["request_id"] / "ssh_config"
+        self.process = subprocess.Popen(["ssh", "-F", str(config), "dev-agent-worker", "rpc"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.errors)
+        try:
+            assert self.request({"op": "channel"})["channel"] == 1
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
+        return self
+
+    def send(self, payload):
+        self.process.stdin.write((json.dumps({**payload, "session": self.session.id}) + "\n").encode())
+        self.process.stdin.flush()
+
+    def reply(self):
+        line = self.process.stdout.readline(1024 * 1024)
+        if not line:
+            self.errors.seek(0)
+            raise RuntimeError("SSH channel closed: " + self.errors.read().decode(errors="replace")[-1500:])
+        result = json.loads(line)
+        if not result.get("ok"):
+            raise RemoteRejected(result.get("error", "Worker rejected request"))
+        return result
+
+    def request(self, payload, upload=None):
+        self.send(payload)
+        if upload:
+            with Path(upload).open("rb") as source:
+                shutil.copyfileobj(source, self.process.stdin, 1024 * 1024)
+            self.process.stdin.flush()
+        return self.reply().get("result")
+
+    def watch(self, job):
+        self.send({"op": "watch", "job": job})
+        while True:
+            result = self.reply()["result"]
+            yield result
+            if result["status"] in FINISHED and result["stdout_eof"] and result["stderr_eof"]:
+                return
+
+    def __exit__(self, *_):
+        try:
+            self.process.stdin.close()
+        except (OSError, ValueError):
+            pass
+        try:
+            self.process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait()
+        self.process.stdout.close()
+        self.errors.close()
 
 
 def command(args, *, data=None, timeout=60, check=True):
@@ -197,11 +260,15 @@ class Session:
                 if state:
                     raise RuntimeError("The previous worker is closing. Wait for its run to finish before allocating another.")
             if not state or state.get("phase") == "retired":
-                repo = gh(f"repos/{REPOSITORY}")
-                if repo["private"]:
+                owner, name = REPOSITORY.split("/")
+                query = 'query { repository(owner: ' + json.dumps(owner) + ', name: ' + json.dumps(name) + ') { isPrivate defaultBranchRef { name target { oid } } } }'
+                repo = gh("graphql", "POST", {"query": query}).get("data", {}).get("repository")
+                if not repo or not repo.get("defaultBranchRef"):
+                    raise RuntimeError("Controller repository is inaccessible or has no default branch")
+                if repo["isPrivate"]:
                     raise RuntimeError("This installation expects the explicitly chosen public controller repository")
-                branch = repo["default_branch"]
-                commit = gh(f"repos/{REPOSITORY}/commits/{branch}")["sha"]
+                branch = repo["defaultBranchRef"]["name"]
+                commit = repo["defaultBranchRef"]["target"]["oid"]
                 request_id = uuid.uuid4().hex
                 instance = self.root / request_id
                 private_directory(instance)
@@ -216,6 +283,7 @@ class Session:
                     raise RuntimeError("Allocation outcome uncertain. Run status/start to reconcile; do not send another dispatch manually.")
             print("Allocating ephemeral worker for this session…", file=sys.stderr, flush=True)
             deadline = time.monotonic() + 300
+            poll_count = 0
             while time.monotonic() < deadline:
                 if not state.get("run_id"):
                     runs = gh(f"repos/{REPOSITORY}/actions/workflows/worker.yml/runs?event=workflow_dispatch&per_page=100")["workflow_runs"]
@@ -232,9 +300,6 @@ class Session:
                                 gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}/cancel", "POST")
                             raise RuntimeError("Controller revision changed during allocation; this exact run was identified and cancelled. Reconcile it before starting another.")
                 if state.get("run_id"):
-                    run = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}")
-                    if run["status"] == "completed":
-                        raise RuntimeError("Worker allocation ended: " + str(run["conclusion"]) + "; " + state["run_url"])
                     artifacts = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}/artifacts")["artifacts"]
                     found = [a for a in artifacts if a["name"] == "connection-" + state["request_id"] and not a["expired"]]
                     if found:
@@ -251,7 +316,12 @@ class Session:
                                     raise
                                 time.sleep(2)
                         raise RuntimeError("Allocated worker did not become ready")
-                time.sleep(3)
+                    if poll_count % 3 == 0:
+                        run = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}")
+                        if run["status"] == "completed":
+                            raise RuntimeError("Worker allocation ended: " + str(run["conclusion"]) + "; " + state["run_url"])
+                poll_count += 1
+                time.sleep(1.5)
             raise TimeoutError("Worker not ready after five minutes. Its allocation is recorded; use status/start to continue, not a new manual dispatch.")
 
     def retire(self, state):
@@ -336,7 +406,7 @@ def allowed(path):
     return not any(p in EXCLUDED for p in parts) and not (name == ".env" or name.startswith(".env.") or name.endswith((".pem", ".p12", ".pfx", ".key")) or name in {"credentials.json", "auth.json", "id_rsa", "id_ed25519", "client_secret.json", ".mcp.json", "mcp.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials", ".envrc"})
 
 
-def project_archive(project, destination):
+def project_archive(project, destination, *, compressed=False):
     project = Path(project).resolve()
     if not project.is_dir():
         raise ValueError("Project directory does not exist")
@@ -354,24 +424,38 @@ def project_archive(project, destination):
             children[:] = [x for x in children if x not in EXCLUDED and not (Path(directory) / x).is_symlink()]
             files += [Path(directory).relative_to(project) / x for x in names]
     count = total = 0
-    with tarfile.open(destination, "w") as archive:
+    parents = {}
+    with ExitStack() as stack:
+        target = stack.enter_context(Path(destination).open("wb"))
+        if compressed:
+            target = stack.enter_context(gzip.GzipFile(filename="", mode="wb", compresslevel=1, mtime=0, fileobj=target))
+        archive = stack.enter_context(tarfile.open(fileobj=target, mode="w|"))
         for relative in sorted(set(files)):
             if not allowed(relative):
                 continue
             source = project / relative
-            if not source.exists() or not source.is_file():
+            try:
+                metadata = source.lstat()
+            except FileNotFoundError:
                 continue
-            if not source.resolve().is_relative_to(project):
+            is_link = stat.S_ISLNK(metadata.st_mode)
+            if is_link:
+                metadata = source.stat()
+            if not stat.S_ISREG(metadata.st_mode):
+                continue
+            if source.parent not in parents:
+                parents[source.parent] = source.parent.resolve()
+            resolved = source.resolve() if is_link else parents[source.parent] / source.name
+            if not resolved.is_relative_to(project):
                 raise ValueError("Project symlink points outside the selected directory: " + str(relative))
-            total += source.stat().st_size
+            total += metadata.st_size
             count += 1
             if total > MAX_ARCHIVE:
                 raise ValueError("Selected project exceeds 512 MiB; select a smaller project")
-            info = archive.gettarinfo(str(source), arcname=relative.as_posix())
-            if not info.isfile():
-                # Dereference an in-tree file link, never create a remote symlink.
-                info = tarfile.TarInfo(relative.as_posix())
-                info.size = source.stat().st_size
+            info = tarfile.TarInfo(relative.as_posix())
+            info.size = metadata.st_size
+            info.mtime = metadata.st_mtime_ns / 1000000000
+            info.mode = 0o755 if metadata.st_mode & 0o111 else 0o644
             if relative in executable:
                 info.mode |= 0o111
             with source.open("rb") as f:
@@ -379,14 +463,23 @@ def project_archive(project, destination):
     return count, total
 
 
-def synchronize(session, state, project):
+def synchronize(session, state, project, channel=None):
     workspace = uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix="dev-agent-upload-", dir=session.root) as temporary:
         archive = Path(temporary) / "source.tar"
-        project_archive(project, archive)
+        capabilities = state.get("connection", {}).get("capabilities", [])
+        project_archive(project, archive, compressed="gzip" in capabilities)
         with archive.open("rb") as f:
             digest = hashlib.file_digest(f, "sha256").hexdigest()
-        result = session.rpc({"op": "sync", "workspace": workspace, "bytes": archive.stat().st_size, "sha256": digest}, state=state, upload=archive)
+        result = None
+        if "source-cache" in capabilities:
+            payload = {"op": "prepare", "workspace": workspace, "sha256": digest}
+            result = channel.request(payload) if channel else session.rpc(payload, state=state)
+            if result.get("need_upload"):
+                result = None
+        if result is None:
+            payload = {"op": "sync", "workspace": workspace, "bytes": archive.stat().st_size, "sha256": digest}
+            result = channel.request(payload, upload=archive) if channel else session.rpc(payload, state=state, upload=archive)
     with locked(session.root / "allocation.lock"):
         current = session.read()
         if not current or current["request_id"] != state["request_id"] or current["phase"] != "ready":
@@ -398,11 +491,19 @@ def synchronize(session, state, project):
     return result
 
 
-def stream_job(session, job, *, follow=True, return_code=True):
+def stream_job(session, job, *, follow=True, return_code=True, channel=None):
     record, state = session.job_state(job)
     offsets = {"stdout_offset": 0, "stderr_offset": 0}
-    while True:
-        result = session.rpc({"op": "poll", "job": job, **offsets}, state=state)
+    def frames():
+        if channel and follow:
+            yield from channel.watch(job)
+            return
+        while True:
+            payload = {"op": "poll", "job": job, **offsets}
+            yield channel.request(payload) if channel else session.rpc(payload, state=state)
+            if follow:
+                time.sleep(1)
+    for result in frames():
         for name in ("stdout", "stderr"):
             data = base64.b64decode(result[name])
             if data:
@@ -415,13 +516,44 @@ def stream_job(session, job, *, follow=True, return_code=True):
             write_json(session.root / "jobs" / (job + ".json"), record)
             code = result["code"] if result["code"] is not None else 1
             return max(0, min(255, code if code >= 0 else 128 - code)) if return_code else 0
-        if not follow:
+        if not follow and result["stdout_eof"] and result["stderr_eof"]:
             return 0
-        time.sleep(1)
 
 
 def show(value):
     print(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+def execute(session, args, argv):
+    state = session.ensure()
+    with ExitStack() as stack:
+        channel = stack.enter_context(Channel(session, state)) if "channel" in state.get("connection", {}).get("capabilities", []) else None
+        synchronized = synchronize(session, state, args.project, channel=channel)
+        job = uuid.uuid4().hex
+        record = {"job": job, "request_id": state["request_id"], "run_id": state["run_id"], "run_url": state["run_url"], "workspace": synchronized["workspace"], "submitted_at": time.time(), "status": "submission-pending", "ephemeral": True}
+        write_json(session.root / "jobs" / (job + ".json"), record)
+        payload = {"op": "submit", "job": job, "workspace": record["workspace"], "cwd": args.cwd, "argv": argv, "env": {}}
+        try:
+            channel.request(payload) if channel else session.rpc(payload, state=state)
+        except RemoteRejected as error:
+            record.update({"status": "submission-rejected", "error": str(error)})
+            write_json(session.root / "jobs" / (job + ".json"), record)
+            raise
+        except Exception:
+            try:
+                session.rpc({"op": "poll", "job": job}, state=state)
+            except Exception:
+                record["status"] = "submission-uncertain"
+                write_json(session.root / "jobs" / (job + ".json"), record)
+                raise RuntimeError(f"Submission outcome uncertain. Keep job {job}; use status --job {job}. Do not repeat the command on a new worker.")
+        record["status"] = "submitted"
+        write_json(session.root / "jobs" / (job + ".json"), record)
+        if args.detach:
+            show(record)
+        else:
+            print(json.dumps({"job": job, "run_url": state["run_url"], "ephemeral": True}), file=sys.stderr, flush=True)
+            return stream_job(session, job, channel=channel)
+    return 0
 
 
 def main():
@@ -475,34 +607,12 @@ def main():
             parser.error("run requires a command after --")
         if not Path(args.project).is_dir():
             raise ValueError("The explicitly selected project directory does not exist")
-        state = session.ensure()
-        synchronized = synchronize(session, state, args.project)
-        job = uuid.uuid4().hex
-        record = {"job": job, "request_id": state["request_id"], "run_id": state["run_id"], "run_url": state["run_url"], "workspace": synchronized["workspace"], "submitted_at": time.time(), "status": "submission-pending", "ephemeral": True}
-        write_json(session.root / "jobs" / (job + ".json"), record)
-        try:
-            session.rpc({"op": "submit", "job": job, "workspace": record["workspace"], "cwd": args.cwd, "argv": argv, "env": {}}, state=state)
-        except RemoteRejected as error:
-            record.update({"status": "submission-rejected", "error": str(error)})
-            write_json(session.root / "jobs" / (job + ".json"), record)
-            raise
-        except Exception:
-            # Reconcile by identifier; no second submit or worker allocation.
-            try:
-                session.rpc({"op": "poll", "job": job}, state=state)
-            except Exception:
-                record["status"] = "submission-uncertain"
-                write_json(session.root / "jobs" / (job + ".json"), record)
-                raise RuntimeError(f"Submission outcome uncertain. Keep job {job}; use status --job {job}. Do not repeat the command on a new worker.")
-        record["status"] = "submitted"
-        write_json(session.root / "jobs" / (job + ".json"), record)
-        if args.detach:
-            show(record)
-        else:
-            print(json.dumps({"job": job, "run_url": state["run_url"], "ephemeral": True}), file=sys.stderr, flush=True)
-            return stream_job(session, job)
+        return execute(session, args, argv)
     elif args.operation in ("wait", "logs"):
-        return stream_job(session, args.job, follow=args.operation == "wait" or args.follow, return_code=args.operation == "wait")
+        _, state = session.job_state(args.job)
+        with ExitStack() as stack:
+            channel = stack.enter_context(Channel(session, state)) if "channel" in state.get("connection", {}).get("capabilities", []) else None
+            return stream_job(session, args.job, follow=args.operation == "wait" or args.follow, return_code=args.operation == "wait", channel=channel)
     elif args.operation == "cancel":
         record, state = session.job_state(args.job)
         result = session.rpc({"op": "cancel", "job": args.job}, state=state)

@@ -76,6 +76,79 @@ class StorageSafety(unittest.TestCase):
         with self.assertRaises(EOFError):
             self.store.sync("test-session", {"bytes": len(data), "workspace": "bad", "sha256": hashlib.sha256(data).hexdigest()}, io.BytesIO(data[:100]))
 
+    def test_cached_archive_creates_fresh_workspace_without_reusing_mutations(self):
+        data = tar_bytes()
+        sync(self.store, data=data)
+        (self.store.root / "workspaces/snapshot/hello.txt").write_text("changed by previous job")
+        request = {"workspace": "fresh", "sha256": hashlib.sha256(data).hexdigest()}
+        result = self.store.prepare("test-session", request)
+        self.assertTrue(result["reused"])
+        self.assertEqual((self.store.root / "workspaces/fresh/hello.txt").read_bytes(), b"hello")
+        archive = self.store.root / "archives" / request["sha256"]
+        archive.chmod(0o600)
+        archive.write_bytes(b"corrupt cached data")
+        self.assertTrue(self.store.prepare("test-session", {**request, "workspace": "after-corruption"})["need_upload"])
+
+    def test_gzip_snapshot_is_deterministic_and_extracts_safely(self):
+        project = self.root / "gzip-project"
+        project.mkdir()
+        (project / "source.txt").write_text("compressible source\n" * 2000)
+        first = self.root / "first.gz"
+        second = self.root / "second.gz"
+        dev_agent.project_archive(project, first, compressed=True)
+        dev_agent.project_archive(project, second, compressed=True)
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+        self.assertLess(first.stat().st_size, (project / "source.txt").stat().st_size // 5)
+        sync(self.store, data=first.read_bytes())
+        self.assertEqual((self.store.root / "workspaces/snapshot/source.txt").read_text(), (project / "source.txt").read_text())
+
+    def test_channel_frames_binary_upload_and_multiple_requests_without_renewing_reads(self):
+        data = tar_bytes()
+        messages = [
+            {"session": "test-session", "op": "channel"},
+            {"session": "test-session", "op": "sync", "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "workspace": "channel-work"},
+        ]
+        framed = b"".join((json.dumps(x) + "\n").encode() for x in messages) + data
+        framed += (json.dumps({"session": "test-session", "op": "status"}) + "\n").encode() * 2
+        output = io.BytesIO()
+        worker.rpc(self.store, "test-session", io.BytesIO(framed), output)
+        replies = [json.loads(x) for x in output.getvalue().splitlines()]
+        self.assertEqual(len(replies), 4)
+        self.assertTrue(all(x["ok"] for x in replies))
+        self.assertEqual(replies[-2]["result"]["activity"], replies[-1]["result"]["activity"])
+        self.assertEqual((self.store.root / "workspaces/channel-work/hello.txt").read_bytes(), b"hello")
+
+    def test_public_supervisor_never_prints_untrusted_reason(self):
+        with self.store.transaction() as conn:
+            conn.execute("UPDATE state SET phase='closed',reason='PRIVATE_REASON_CANARY' WHERE id=1")
+        from contextlib import redirect_stdout
+        output = io.StringIO()
+        with redirect_stdout(output):
+            worker.supervise(self.store, "test-session")
+        self.assertEqual(output.getvalue(), "DEV_AGENT_STOPPED reason=unknown\n")
+
+    def test_public_supervisor_exception_is_a_fixed_message_only(self):
+        from contextlib import redirect_stdout
+        output = io.StringIO()
+        argv = ["worker.py", "supervise", "--root", str(self.store.root), "--session", "test-session"]
+        with patch.object(sys, "argv", argv), patch.object(worker, "supervise", side_effect=RuntimeError("PRIVATE_EXCEPTION_CANARY")), redirect_stdout(output):
+            with self.assertRaises(SystemExit) as caught:
+                worker.main()
+        self.assertEqual(caught.exception.code, 1)
+        self.assertEqual(output.getvalue(), "DEV_AGENT_CONTROLLER_FAILED\n")
+
+    def test_project_symlink_cannot_copy_an_external_file(self):
+        project = self.root / "symlink-project"
+        project.mkdir()
+        outside = self.root / "outside.txt"
+        outside.write_text("must not leave the client")
+        try:
+            (project / "link.txt").symlink_to(outside)
+        except OSError:
+            self.skipTest("File symlinks unavailable on this Windows client")
+        with self.assertRaises(ValueError):
+            dev_agent.project_archive(project, self.root / "unsafe.tar")
+
     def test_submission_is_idempotent_and_conflicting_reuse_is_rejected(self):
         sync(self.store)
         request = {"job": "same-job", "workspace": "snapshot", "argv": ["echo", "once"], "cwd": ".", "env": {}}
@@ -277,6 +350,19 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(self.store.status("test-session")["phase"], "open")
         self.assertEqual(self.store.job("test-session", "descendant")["status"], "running")
         self.until(lambda: self.store.job("test-session", "descendant")["status"] == "completed")
+
+    def test_stream_watch_delivers_output_and_terminal_frame_without_idle_keepalive(self):
+        self.submit("watch", [sys.executable, "-u", "-c", "import time; print('first',flush=True); time.sleep(0.7); print('last')"])
+        output = io.BytesIO()
+        worker.rpc(self.store, "test-session", io.BytesIO(b'{"session":"test-session","op":"watch","job":"watch"}\n'), output)
+        frames = [json.loads(line)["result"] for line in output.getvalue().splitlines()]
+        self.assertEqual(frames[-1]["status"], "completed")
+        self.assertEqual(frames[-1]["code"], 0)
+        import base64
+        self.assertEqual(b"".join(base64.b64decode(x["stdout"]) for x in frames), b"first\nlast\n")
+        before = self.store.status("test-session")["activity"]
+        worker.rpc(self.store, "test-session", io.BytesIO(b'{"session":"test-session","op":"watch","job":"watch"}\n'), io.BytesIO())
+        self.assertEqual(self.store.status("test-session")["activity"], before)
 
 
 if __name__ == "__main__":
