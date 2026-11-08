@@ -260,6 +260,20 @@ class ClientIsolation(unittest.TestCase):
             self.assertEqual(dev_agent.main(), 42)
         self.assertEqual(execute.call_args.args[2], ["python3", "-c", "print('test')"])
 
+    def test_slow_github_read_is_bounded_and_retried_once(self):
+        done = subprocess.CompletedProcess(["gh"], 0, b'{"ok":true}', b"")
+        with patch.object(subprocess, "run", side_effect=[subprocess.TimeoutExpired(["gh"], 8), done]) as run:
+            self.assertEqual(dev_agent.gh("repos/example/controller"), {"ok": True})
+        self.assertEqual(run.call_count, 2)
+        self.assertTrue(all(call.kwargs["timeout"] == 8 for call in run.call_args_list))
+
+    def test_timed_out_github_write_is_never_retried(self):
+        with patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired(["gh"], 60)) as run:
+            with self.assertRaises(RuntimeError):
+                dev_agent.gh("repos/example/controller/actions/workflows/worker.yml/dispatches", "POST", {"ref": "main"})
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(run.call_args.kwargs["timeout"], 60)
+
     def test_connection_metadata_must_match_every_allocation_identity(self):
         state = {"request_id": "a" * 32, "run_id": 123, "sha": "b" * 40}
         instance = self.session.root / state["request_id"]

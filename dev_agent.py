@@ -139,7 +139,15 @@ def gh(path, method="GET", payload=None):
         args += ["--input", "-"]
     begin = time.perf_counter()
     try:
-        result = subprocess.run(args, input=json.dumps(payload).encode() if payload is not None else None, capture_output=True, env=env, timeout=60)
+        read_only = method == "GET" or (path == "graphql" and method == "POST" and (payload or {}).get("query", "").lstrip().startswith("query"))
+        attempts = 2 if read_only else 1
+        for attempt in range(attempts):
+            try:
+                result = subprocess.run(args, input=json.dumps(payload).encode() if payload is not None else None, capture_output=True, env=env, timeout=8 if read_only else 60)
+                break
+            except subprocess.TimeoutExpired:
+                if attempt + 1 == attempts:
+                    raise RuntimeError("GitHub read timed out; saved allocation/job identifiers remain available" if read_only else "GitHub write timed out; its outcome must be reconciled before another write") from None
     finally:
         trace("github:" + method + ":" + path.split("?", 1)[0], begin)
     if result.returncode:
@@ -310,7 +318,7 @@ class Session:
                 except Exception:
                     state["phase"] = "allocation-uncertain"
                     self.save(state)
-                    raise RuntimeError("Allocation outcome uncertain. Run status/start to reconcile; do not send another dispatch manually.")
+                    raise RuntimeError("Allocation outcome uncertain. Run start to reconcile its saved request; do not send another dispatch manually.")
             print("Allocating ephemeral worker for this session…", file=sys.stderr, flush=True)
             deadline = time.monotonic() + 300
             poll_count = 0
