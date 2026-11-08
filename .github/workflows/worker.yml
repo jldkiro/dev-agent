@@ -55,6 +55,7 @@ jobs:
           printf '%s\n' "$CLIENT_PUBLIC_KEY" | sudo tee "$control/authorized_keys" >/dev/null
           sudo chmod 644 "$control/authorized_keys"
           sudo ssh-keygen -q -t ed25519 -N '' -f "$control/host_key"
+          sudo chmod 600 "$control/host_key"
           cat > "$RUNNER_TEMP/dev-agent-sshd" <<EOF
           Port 2222
           ListenAddress 127.0.0.1
@@ -92,6 +93,8 @@ jobs:
             sleep 2
           done
           test -s "$RUNNER_TEMP/dev-agent-url"
+          kill -0 "$(cat "$RUNNER_TEMP/dev-agent-controller.pid")"
+          sudo -u devagent python3 -c "import sqlite3; assert sqlite3.connect('/tmp/dev-agent/state/state.sqlite').execute('SELECT phase FROM state WHERE id=1').fetchone()[0]=='open'"
           sudo cat "$control/host_key.pub" > "$RUNNER_TEMP/dev-agent-host.pub"
           python3 - <<'PY'
           import json,os,pathlib,time

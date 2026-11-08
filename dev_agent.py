@@ -179,7 +179,19 @@ class Session:
                     self.retire(state)
                     state = None
             if state and state.get("phase") == "ready":
-                return state
+                result = self.rpc({"op": "status"}, state=state)
+                if result["phase"] == "open":
+                    return state
+                deadline = time.monotonic() + 25
+                while time.monotonic() < deadline:
+                    run = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}")
+                    if run["status"] == "completed":
+                        self.retire(state)
+                        state = None
+                        break
+                    time.sleep(2)
+                if state:
+                    raise RuntimeError("The previous worker is closing. Wait for its run to finish before allocating another.")
             if not state or state.get("phase") == "retired":
                 repo = gh(f"repos/{REPOSITORY}")
                 if repo["private"]:
@@ -222,7 +234,15 @@ class Session:
                         with zipfile.ZipFile(__import__("io").BytesIO(data)) as archive:
                             connection = json.loads(archive.read("connection.json"))
                         self.configure_ssh(state, connection)
-                        return state
+                        for attempt in range(3):
+                            try:
+                                if self.rpc({"op": "status"}, state=state)["phase"] == "open":
+                                    return state
+                            except (RuntimeError, OSError):
+                                if attempt == 2:
+                                    raise
+                                time.sleep(2)
+                        raise RuntimeError("Allocated worker did not become ready")
                 time.sleep(3)
             raise TimeoutError("Worker not ready after five minutes. Its allocation is recorded; use status/start to continue, not a new manual dispatch.")
 
@@ -284,6 +304,8 @@ class Session:
                 process.stdout.close()
 
     def job_record(self, job):
+        if not re.fullmatch(r"[a-f0-9]{32}", job):
+            raise ValueError("Invalid job identifier")
         return json.loads((self.root / "jobs" / (job + ".json")).read_bytes())
 
     def job_state(self, job):
