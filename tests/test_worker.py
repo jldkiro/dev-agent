@@ -111,6 +111,9 @@ class StorageSafety(unittest.TestCase):
         (project / "source.py").write_text("print('source')")
         (project / ".env").write_text("PRIVATE=must-not-upload")
         (project / "credentials.json").write_text("must-not-upload")
+        (project / ".mcp.json").write_text('{"token":"must-not-upload"}')
+        (project / ".agents").mkdir()
+        (project / ".agents/private.md").write_text("do not upload ambient agent context")
         (project / "node_modules").mkdir()
         (project / "node_modules/big.js").write_text("unnecessary")
         archive = self.root / "source.tar"

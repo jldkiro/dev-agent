@@ -28,7 +28,7 @@ CONFIG_ROOT = Path(os.environ.get("DEV_AGENT_STATE_DIR", str(Path(os.environ.get
 GH_CONFIG = Path(os.environ.get("DEV_AGENT_GH_CONFIG_DIR", str(CONFIG_ROOT / "gh")))
 MAX_ARCHIVE = 512 * 1024 * 1024
 FINISHED = {"completed", "failed", "cancelled", "lost"}
-EXCLUDED = {".git", ".ssh", ".codex", ".claude", ".config", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "local"}
+EXCLUDED = {".git", ".ssh", ".agents", ".codex", ".claude", ".config", ".aws", ".azure", ".gnupg", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "local"}
 
 
 class RemoteRejected(RuntimeError):
@@ -333,7 +333,7 @@ class Session:
 def allowed(path):
     parts = path.parts
     name = path.name.lower()
-    return not any(p in EXCLUDED for p in parts) and not (name == ".env" or name.startswith(".env.") or name.endswith((".pem", ".p12", ".pfx", ".key")) or name in {"credentials.json", "auth.json", "id_rsa", "id_ed25519", "client_secret.json"})
+    return not any(p in EXCLUDED for p in parts) and not (name == ".env" or name.startswith(".env.") or name.endswith((".pem", ".p12", ".pfx", ".key")) or name in {"credentials.json", "auth.json", "id_rsa", "id_ed25519", "client_secret.json", ".mcp.json", "mcp.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials", ".envrc"})
 
 
 def project_archive(project, destination):
