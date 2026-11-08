@@ -33,6 +33,16 @@ FINISHED = {"completed", "failed", "cancelled", "lost"}
 EXCLUDED = {".git", ".ssh", ".agents", ".codex", ".claude", ".config", ".aws", ".azure", ".gnupg", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "local"}
 
 
+def trace(operation, begin):
+    destination = os.environ.get("DEV_AGENT_TRACE")
+    if destination:
+        try:
+            with Path(destination).open("a", encoding="utf-8") as out:
+                out.write(json.dumps({"operation": operation, "seconds": round(time.perf_counter() - begin, 5)}) + "\n")
+        except OSError:
+            pass
+
+
 class RemoteRejected(RuntimeError):
     """A complete negative RPC response proves that a request was rejected."""
 
@@ -69,6 +79,13 @@ class Channel:
         return result
 
     def request(self, payload, upload=None):
+        begin = time.perf_counter()
+        try:
+            return self._request(payload, upload)
+        finally:
+            trace("ssh-channel:" + payload.get("op", "unknown"), begin)
+
+    def _request(self, payload, upload=None):
         self.send(payload)
         if upload:
             with Path(upload).open("rb") as source:
@@ -113,7 +130,11 @@ def gh(path, method="GET", payload=None):
     args = ["gh", "api", path, "--method", method]
     if payload is not None:
         args += ["--input", "-"]
-    result = subprocess.run(args, input=json.dumps(payload).encode() if payload is not None else None, capture_output=True, env=env, timeout=60)
+    begin = time.perf_counter()
+    try:
+        result = subprocess.run(args, input=json.dumps(payload).encode() if payload is not None else None, capture_output=True, env=env, timeout=60)
+    finally:
+        trace("github:" + method + ":" + path.split("?", 1)[0], begin)
     if result.returncode:
         raise RuntimeError("GitHub request failed: " + result.stderr.decode(errors="replace")[-1500:])
     if not result.stdout.strip():
@@ -343,6 +364,13 @@ class Session:
             self.save(state)
 
     def rpc(self, payload, *, state=None, upload=None, download=None):
+        begin = time.perf_counter()
+        try:
+            return self._rpc(payload, state=state, upload=upload, download=download)
+        finally:
+            trace("ssh:" + payload.get("op", "unknown"), begin)
+
+    def _rpc(self, payload, *, state=None, upload=None, download=None):
         state = state or self.read()
         if not state or state.get("phase") != "ready":
             raise RuntimeError("No ready worker in this session; start it first")
@@ -562,11 +590,11 @@ def main():
     commands.add_parser("start")
     status = commands.add_parser("status")
     status.add_argument("--job")
-    execute = commands.add_parser("run")
-    execute.add_argument("--project", required=True, help="Explicit local directory to upload; never an implicit personal repo")
-    execute.add_argument("--cwd", default=".", help="Relative working directory inside that uploaded project")
-    execute.add_argument("--detach", action="store_true")
-    execute.add_argument("argv", nargs=argparse.REMAINDER)
+    run_parser = commands.add_parser("run")
+    run_parser.add_argument("--project", required=True, help="Explicit local directory to upload; never an implicit personal repo")
+    run_parser.add_argument("--cwd", default=".", help="Relative working directory inside that uploaded project")
+    run_parser.add_argument("--detach", action="store_true")
+    run_parser.add_argument("argv", nargs=argparse.REMAINDER)
     for name in ("logs", "wait", "cancel"):
         item = commands.add_parser(name)
         item.add_argument("job")

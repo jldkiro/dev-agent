@@ -85,9 +85,9 @@ ForceCommand /usr/bin/python3 $control/worker.py rpc --root $data/state --sessio
 EOF
 sudo install -m 600 "$RUNNER_TEMP/dev-agent-sshd" "$control/sshd_config"
 sudo /usr/sbin/sshd -t -f "$control/sshd_config"
-sudo -u devagent env -i HOME="$data/home" PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 python3 "$control/worker.py" serve --root "$data/state" --session "$SESSION_ID" --idle-seconds 900 --lifetime-seconds 21000 > "$RUNNER_TEMP/dev-agent-controller.log" 2>&1 &
+sudo -u devagent env -i HOME="$data/home" PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 python3 "$control/worker.py" serve --root "$data/state" --session "$SESSION_ID" --idle-seconds 900 --lifetime-seconds 21000 > "$RUNNER_TEMP/dev-agent-controller.log" 2>&1 3>&- &
 echo "$!" > "$RUNNER_TEMP/dev-agent-controller.pid"
-sudo /usr/sbin/sshd -D -e -f "$control/sshd_config" > "$RUNNER_TEMP/dev-agent-sshd.log" 2>&1 &
+sudo /usr/sbin/sshd -D -e -f "$control/sshd_config" > "$RUNNER_TEMP/dev-agent-sshd.log" 2>&1 3>&- &
 { printf '[127.0.0.1]:2222 '; sudo cat /etc/ssh/dev-agent-host_key.pub; } | sudo tee "$control/probe_known_hosts" >/dev/null
 stage=selftest
 sleep 1
@@ -101,7 +101,7 @@ sudo rm -f "$control/probe_key" "$control/probe_key.pub" "$control/probe_known_h
 stage=tunnel
 echo 'f29324fe934d1e100617484c78deef803c4dc2cd351d645bbde42e96b4fccc5e  '"$RUNNER_TEMP/dev-agent-cloudflared" | sha256sum --check
 chmod 755 "$RUNNER_TEMP/dev-agent-cloudflared"
-"$RUNNER_TEMP/dev-agent-cloudflared" tunnel --no-autoupdate --url ssh://127.0.0.1:2222 > "$RUNNER_TEMP/dev-agent-tunnel.log" 2>&1 &
+"$RUNNER_TEMP/dev-agent-cloudflared" tunnel --no-autoupdate --url ssh://127.0.0.1:2222 > "$RUNNER_TEMP/dev-agent-tunnel.log" 2>&1 3>&- &
 for attempt in $(seq 1 90); do
   grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' "$RUNNER_TEMP/dev-agent-tunnel.log" | head -1 > "$RUNNER_TEMP/dev-agent-url" || true
   test ! -s "$RUNNER_TEMP/dev-agent-url" || break

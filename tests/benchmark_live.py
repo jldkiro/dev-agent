@@ -35,6 +35,8 @@ def main():
         owner = "dev-agent-benchmark-" + uuid.uuid4().hex
         os.environ["CODEX_THREAD_ID"] = owner
         session = client.Session()
+        trace_file = session.root / "benchmark-trace.jsonl"
+        os.environ["DEV_AGENT_TRACE"] = str(trace_file)
         trial = {"trial": index + 1, "warm_command_seconds": [], "rpc_seconds": []}
         result["trials"].append(trial)
         canaries = ["PRIVATE_" + kind + "_" + uuid.uuid4().hex for kind in ("OUT", "ERR", "FILE", "ARG")]
@@ -52,6 +54,8 @@ def main():
             try:
                 begin = time.perf_counter()
                 state = session.ensure()
+                if trace_file.exists():
+                    trial["startup_events"] = [json.loads(x) for x in trace_file.read_text().splitlines()]
                 trial["startup_seconds"] = round(time.perf_counter() - begin, 4)
                 trial["run_url"] = state["run_url"]
                 trial["run_id"] = state["run_id"]
@@ -91,10 +95,17 @@ def main():
                         reused = session.rpc({"op": "prepare", "workspace": uuid.uuid4().hex, "sha256": digest})
                         assert reused["reused"]
                         trial["project_cached_snapshot_seconds"] = round(time.perf_counter() - begin, 4)
+            except Exception as error:
+                trial["failed"] = True
+                trial["error_type"] = type(error).__name__
+                raise
             finally:
                 elapsed, done = cli("stop", "--force")
                 trial["stop_seconds"] = round(elapsed, 4)
                 trial["cleanup"] = json.loads(done.stdout)
+                if trace_file.exists():
+                    trial["timing_events"] = [json.loads(x) for x in trace_file.read_text().splitlines()]
+                client.write_json(receipt, result)
             if trial.get("run_id"):
                 run_id = trial["run_id"]
                 jobs = client.gh(f"repos/{client.REPOSITORY}/actions/runs/{run_id}/jobs")["jobs"]

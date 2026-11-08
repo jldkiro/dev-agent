@@ -238,6 +238,12 @@ class ClientIsolation(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.session.job_record("../../private")
 
+    def test_run_cli_dispatches_argv_and_returns_remote_exit_code(self):
+        argv = ["dev-agent", "run", "--project", self.temp.name, "--", "python3", "-c", "print('test')"]
+        with patch.object(sys, "argv", argv), patch.object(dev_agent, "execute", return_value=42) as execute:
+            self.assertEqual(dev_agent.main(), 42)
+        self.assertEqual(execute.call_args.args[2], ["python3", "-c", "print('test')"])
+
     def test_connection_metadata_must_match_every_allocation_identity(self):
         state = {"request_id": "a" * 32, "run_id": 123, "sha": "b" * 40}
         instance = self.session.root / state["request_id"]
