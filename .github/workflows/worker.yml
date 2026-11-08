@@ -41,6 +41,8 @@ jobs:
           data=/tmp/dev-agent
           mkdir -p "$RUNNER_TEMP/dev-agent-public"
           sudo mkdir -p "$control" "$data/home" "$data/state" /run/sshd
+          sudo chown root:root "$control"
+          sudo chmod 755 "$control"
           curl --fail --silent --show-error --location "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/worker.py" -o "$RUNNER_TEMP/dev-agent-worker.py"
           sudo install -m 644 "$RUNNER_TEMP/dev-agent-worker.py" "$control/worker.py"
           sudo useradd --no-create-home --home-dir "$data/home" --shell /bin/bash devagent
@@ -52,16 +54,18 @@ jobs:
           mkdir "$RUNNER_TEMP/uv-bin"
           tar -xzf "$RUNNER_TEMP/uv.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/uv-bin"
           sudo install -m 755 "$RUNNER_TEMP/uv-bin/uv" /usr/local/bin/uv
-          printf '%s\n' "$CLIENT_PUBLIC_KEY" | sudo tee "$control/authorized_keys" >/dev/null
-          sudo chmod 644 "$control/authorized_keys"
-          sudo ssh-keygen -q -t ed25519 -N '' -f "$control/host_key"
-          sudo chmod 600 "$control/host_key"
+          sudo ssh-keygen -q -t ed25519 -N '' -f "$control/probe_key"
+          sudo chmod 600 "$control/probe_key"
+          { printf '%s\n' "$CLIENT_PUBLIC_KEY"; sudo cat "$control/probe_key.pub"; } | sudo tee /etc/ssh/dev-agent-authorized_keys >/dev/null
+          sudo chmod 644 /etc/ssh/dev-agent-authorized_keys
+          sudo ssh-keygen -q -t ed25519 -N '' -f /etc/ssh/dev-agent-host_key
+          sudo chmod 600 /etc/ssh/dev-agent-host_key
           cat > "$RUNNER_TEMP/dev-agent-sshd" <<EOF
           Port 2222
           ListenAddress 127.0.0.1
-          HostKey $control/host_key
+          HostKey /etc/ssh/dev-agent-host_key
           PidFile $control/sshd.pid
-          AuthorizedKeysFile $control/authorized_keys
+          AuthorizedKeysFile /etc/ssh/dev-agent-authorized_keys
           PubkeyAuthentication yes
           PasswordAuthentication no
           KbdInteractiveAuthentication no
@@ -83,6 +87,15 @@ jobs:
           sudo -u devagent env -i HOME="$data/home" PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 python3 "$control/worker.py" serve --root "$data/state" --session "$SESSION_ID" --idle-seconds 900 --lifetime-seconds 21000 > "$RUNNER_TEMP/dev-agent-controller.log" 2>&1 &
           echo "$!" > "$RUNNER_TEMP/dev-agent-controller.pid"
           sudo /usr/sbin/sshd -D -e -f "$control/sshd_config" > "$RUNNER_TEMP/dev-agent-sshd.log" 2>&1 &
+          { printf '[127.0.0.1]:2222 '; sudo cat /etc/ssh/dev-agent-host_key.pub; } | sudo tee "$control/probe_known_hosts" >/dev/null
+          sleep 1
+          if ! printf '{"op":"status","session":"%s"}\n' "$SESSION_ID" | sudo ssh -i "$control/probe_key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$control/probe_known_hosts" -p 2222 devagent@127.0.0.1 rpc > "$RUNNER_TEMP/dev-agent-probe.json"; then
+            sudo cat "$RUNNER_TEMP/dev-agent-sshd.log"
+            exit 1
+          fi
+          python3 -c "import json,os,pathlib; d=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'dev-agent-probe.json').read_text()); assert d['ok'] and d['result']['phase']=='open'"
+          printf '%s\n' "$CLIENT_PUBLIC_KEY" | sudo tee /etc/ssh/dev-agent-authorized_keys >/dev/null
+          sudo rm -f "$control/probe_key" "$control/probe_key.pub" "$control/probe_known_hosts"
           curl --fail --silent --show-error --location https://github.com/cloudflare/cloudflared/releases/download/2026.8.3/cloudflared-linux-amd64 -o "$RUNNER_TEMP/dev-agent-cloudflared"
           echo 'f29324fe934d1e100617484c78deef803c4dc2cd351d645bbde42e96b4fccc5e  '"$RUNNER_TEMP/dev-agent-cloudflared" | sha256sum --check
           chmod 755 "$RUNNER_TEMP/dev-agent-cloudflared"
@@ -95,7 +108,7 @@ jobs:
           test -s "$RUNNER_TEMP/dev-agent-url"
           kill -0 "$(cat "$RUNNER_TEMP/dev-agent-controller.pid")"
           sudo -u devagent python3 -c "import sqlite3; assert sqlite3.connect('/tmp/dev-agent/state/state.sqlite').execute('SELECT phase FROM state WHERE id=1').fetchone()[0]=='open'"
-          sudo cat "$control/host_key.pub" > "$RUNNER_TEMP/dev-agent-host.pub"
+          sudo cat /etc/ssh/dev-agent-host_key.pub > "$RUNNER_TEMP/dev-agent-host.pub"
           python3 - <<'PY'
           import json,os,pathlib,time
           root=pathlib.Path(os.environ['RUNNER_TEMP'])
@@ -121,3 +134,9 @@ jobs:
           assert row and row[0]=='closed', 'Worker controller stopped unexpectedly'
           print('Worker closed:',row[1])
           PY
+      - name: Report startup diagnostics without command payloads
+        if: failure()
+        shell: bash
+        run: |
+          test ! -f "$RUNNER_TEMP/dev-agent-sshd.log" || sudo tail -n 15 "$RUNNER_TEMP/dev-agent-sshd.log"
+          test ! -f "$RUNNER_TEMP/dev-agent-controller.log" || tail -n 15 "$RUNNER_TEMP/dev-agent-controller.log"

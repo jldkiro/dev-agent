@@ -124,6 +124,25 @@ class StorageSafety(unittest.TestCase):
             self.store.stop("test-session")
         self.assertEqual(self.store.status("test-session")["phase"], "open")
 
+    def test_git_snapshot_includes_dirty_and_untracked_files_with_executable_mode(self):
+        project = self.root / "git-project"
+        project.mkdir()
+        subprocess.run(["git", "init", "-q", str(project)], check=True)
+        (project / "tracked.sh").write_text("original")
+        subprocess.run(["git", "-C", str(project), "add", "tracked.sh"], check=True)
+        subprocess.run(["git", "-C", str(project), "update-index", "--chmod=+x", "tracked.sh"], check=True)
+        (project / "tracked.sh").write_text("changed locally")
+        (project / "untracked.py").write_text("uncommitted")
+        (project / ".gitignore").write_text("ignored.bin\n")
+        (project / "ignored.bin").write_bytes(b"do not upload")
+        archive = self.root / "git.tar"
+        dev_agent.project_archive(project, archive)
+        with tarfile.open(archive) as tf:
+            self.assertEqual(tf.extractfile("tracked.sh").read(), b"changed locally")
+            self.assertTrue(tf.getmember("tracked.sh").mode & 0o111)
+            self.assertIn("untracked.py", tf.getnames())
+            self.assertNotIn("ignored.bin", tf.getnames())
+
 
 @unittest.skipUnless(os.name == "posix" and Path("/proc").exists(), "Linux process controller")
 class Lifecycle(unittest.TestCase):

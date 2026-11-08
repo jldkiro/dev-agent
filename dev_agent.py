@@ -331,8 +331,11 @@ def project_archive(project, destination):
         # Resolve paths from the explicitly selected directory, not an ambient parent repo.
         listing = command(["git", "-C", str(project), "ls-files", "--cached", "--others", "--exclude-standard", "-z"]).stdout
         files = [Path(os.fsdecode(x)) for x in listing.split(b"\0") if x]
+        stage = command(["git", "-C", str(project), "ls-files", "--stage", "-z"]).stdout
+        executable = {Path(os.fsdecode(row.split(b"\t", 1)[1])) for row in stage.split(b"\0") if row.startswith(b"100755 ")}
     else:
         files = []
+        executable = set()
         for directory, children, names in os.walk(project):
             children[:] = [x for x in children if x not in EXCLUDED and not (Path(directory) / x).is_symlink()]
             files += [Path(directory).relative_to(project) / x for x in names]
@@ -355,6 +358,8 @@ def project_archive(project, destination):
                 # Dereference an in-tree file link, never create a remote symlink.
                 info = tarfile.TarInfo(relative.as_posix())
                 info.size = source.stat().st_size
+            if relative in executable:
+                info.mode |= 0o111
             with source.open("rb") as f:
                 archive.addfile(info, f)
     return count, total
