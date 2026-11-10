@@ -26,8 +26,29 @@ from urllib.parse import urlsplit
 import zipfile
 
 REPOSITORY = "jldkiro/dev-agent"
+IDLE_SECONDS = 3600
+PRIVATE = False
+WORKFLOW = "worker.yml"
+WORKFLOW_BRANCH = None
 CONFIG_ROOT = Path(os.environ.get("DEV_AGENT_STATE_DIR", str(Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".local/state"))) / "JLDIAOS/dev-agent")))
 GH_CONFIG = Path(os.environ.get("DEV_AGENT_GH_CONFIG_DIR", str(CONFIG_ROOT / "gh")))
+PROFILES = {
+    'public': ('jldkiro/dev-agent', False, None, True),
+    'private': ('jldkiro/dev-agent-private', True, None, True),
+    'ha-mcp': ('julienld/ha-mcp-dev', False, 'dev-agent-worker', False),
+}
+
+
+def select_profile(name):
+    global REPOSITORY, PRIVATE, IDLE_SECONDS, GH_CONFIG, WORKFLOW_BRANCH
+    REPOSITORY, PRIVATE, WORKFLOW_BRANCH, dedicated = PROFILES[name]
+    IDLE_SECONDS = 300 if PRIVATE else 3600
+    if 'DEV_AGENT_GH_CONFIG_DIR' in os.environ:
+        GH_CONFIG = Path(os.environ['DEV_AGENT_GH_CONFIG_DIR'])
+    elif dedicated:
+        GH_CONFIG = CONFIG_ROOT / 'gh'
+    else:
+        GH_CONFIG = None  # Let gh locate the ordinary personal profile itself.
 MAX_ARCHIVE = 512 * 1024 * 1024
 FINISHED = {"completed", "failed", "cancelled", "lost"}
 EXCLUDED = {".git", ".ssh", ".agents", ".codex", ".claude", ".config", ".aws", ".azure", ".gnupg", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "local"}
@@ -131,7 +152,10 @@ def command(args, *, data=None, timeout=60, check=True):
 
 def gh(path, method="GET", payload=None):
     env = os.environ.copy()
-    env["GH_CONFIG_DIR"] = str(GH_CONFIG)
+    if GH_CONFIG is None:
+        env.pop('GH_CONFIG_DIR', None)
+    else:
+        env["GH_CONFIG_DIR"] = str(GH_CONFIG)
     for key in ("GH_TOKEN", "GITHUB_TOKEN"):
         env.pop(key, None)
     args = ["gh", "api", path, "--method", method]
@@ -227,7 +251,7 @@ class Session:
         owner = os.environ.get("CODEX_THREAD_ID") or os.environ.get("T3_THREAD_ID")
         if not owner:
             raise RuntimeError("A CODEX_THREAD_ID or T3_THREAD_ID is required; workers must belong to a session")
-        self.id = hashlib.sha256(("dev-agent:" + owner).encode()).hexdigest()[:32]
+        self.id = hashlib.sha256(("dev-agent:" + REPOSITORY + ':' + owner).encode()).hexdigest()[:32]
         self.root = CONFIG_ROOT / "sessions" / self.id
         if not self.root.exists():
             private_directory(self.root)
@@ -243,7 +267,7 @@ class Session:
     def configure_ssh(self, state, connection):
         if connection.get("repository") != REPOSITORY or connection.get("sha") != state["sha"] or connection.get("run_id") != state["run_id"] or connection.get("session_id") != self.id or connection.get("request_id") != state["request_id"]:
             raise RuntimeError("Connection metadata does not match the requested run/session/revision")
-        if connection.get("protocol") != 1 or connection.get("idle_seconds") != 900 or not connection.get("ephemeral"):
+        if connection.get("protocol") != 1 or connection.get("idle_seconds") != IDLE_SECONDS or not connection.get("ephemeral") or bool(connection.get('checkpoints', False)) != PRIVATE:
             raise RuntimeError("Unexpected worker protocol or lifetime policy")
         hostname = urlsplit(connection["url"]).hostname
         if not hostname or not re.fullmatch(r"[a-z0-9-]+\.trycloudflare\.com", hostname):
@@ -282,12 +306,12 @@ class Session:
                     self._retire_locked(state)
                     state = None
             if state and state.get("phase") == "ready":
-                if not preflight and "channel" in state.get("connection", {}).get("capabilities", []):
+                if not PRIVATE and not preflight and "channel" in state.get("connection", {}).get("capabilities", []):
                     return state  # The authenticated writable channel checks phase before accepting work.
                 result = self.rpc({"op": "status"}, state=state)
                 if result["phase"] == "open":
                     return state
-                deadline = time.monotonic() + 25
+                deadline = time.monotonic() + (150 if PRIVATE else 25)
                 while time.monotonic() < deadline:
                     run = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}")
                     if run["status"] == "completed":
@@ -303,10 +327,10 @@ class Session:
                 repo = gh("graphql", "POST", {"query": query}).get("data", {}).get("repository")
                 if not repo or not repo.get("defaultBranchRef"):
                     raise RuntimeError("Controller repository is inaccessible or has no default branch")
-                if repo["isPrivate"]:
-                    raise RuntimeError("This installation expects the explicitly chosen public controller repository")
-                branch = repo["defaultBranchRef"]["name"]
-                commit = repo["defaultBranchRef"]["target"]["oid"]
+                if bool(repo["isPrivate"]) != PRIVATE:
+                    raise RuntimeError("Controller visibility does not match the selected profile; no allocation sent")
+                branch = WORKFLOW_BRANCH or repo["defaultBranchRef"]["name"]
+                commit = gh(f'repos/{REPOSITORY}/commits/{branch}')["sha"] if WORKFLOW_BRANCH else repo["defaultBranchRef"]["target"]["oid"]
                 request_id = uuid.uuid4().hex
                 instance = self.root / request_id
                 private_directory(instance)
@@ -525,6 +549,7 @@ def project_archive(project, destination, *, compressed=False):
 
 def synchronize(session, state, project, channel=None):
     workspace = uuid.uuid4().hex
+    project_key = hashlib.sha256(str(Path(project).resolve()).encode()).hexdigest()[:32]
     with tempfile.TemporaryDirectory(prefix="dev-agent-upload-", dir=session.root) as temporary:
         archive = Path(temporary) / "source.tar"
         capabilities = state.get("connection", {}).get("capabilities", [])
@@ -533,12 +558,12 @@ def synchronize(session, state, project, channel=None):
             digest = hashlib.file_digest(f, "sha256").hexdigest()
         result = None
         if "source-cache" in capabilities:
-            payload = {"op": "prepare", "workspace": workspace, "sha256": digest}
+            payload = {"op": "prepare", "workspace": workspace, "sha256": digest, 'project': project_key}
             result = channel.request(payload) if channel else session.rpc(payload, state=state)
             if result.get("need_upload"):
                 result = None
         if result is None:
-            payload = {"op": "sync", "workspace": workspace, "bytes": archive.stat().st_size, "sha256": digest}
+            payload = {"op": "sync", "workspace": workspace, "bytes": archive.stat().st_size, "sha256": digest, 'project': project_key}
             result = channel.request(payload, upload=archive) if channel else session.rpc(payload, state=state, upload=archive)
     with locked(session.root / "allocation.lock"):
         current = session.read()
@@ -546,6 +571,7 @@ def synchronize(session, state, project, channel=None):
             raise RuntimeError("Upload belonged to a worker retired during the transfer; no command was submitted")
         current["workspace"] = workspace
         current["project"] = str(Path(project).resolve())
+        current['project_key'] = project_key
         session.save(current)
         state.update(current)
     return result
@@ -592,7 +618,7 @@ def execute(session, args, argv):
         job = uuid.uuid4().hex
         record = {"job": job, "request_id": state["request_id"], "run_id": state["run_id"], "run_url": state["run_url"], "workspace": synchronized["workspace"], "submitted_at": time.time(), "status": "submission-pending", "ephemeral": True}
         write_json(session.root / "jobs" / (job + ".json"), record)
-        payload = {"op": "submit", "job": job, "workspace": record["workspace"], "cwd": args.cwd, "argv": argv, "env": {}}
+        payload = {"op": "submit", "job": job, "workspace": record["workspace"], "cwd": args.cwd, "argv": argv, "env": {}, 'project': state.get('project_key')}
         try:
             channel.request(payload) if channel else session.rpc(payload, state=state)
         except RemoteRejected as error:
@@ -618,6 +644,7 @@ def execute(session, args, argv):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--profile', choices=PROFILES, default=os.environ.get('DEV_AGENT_PROFILE', 'public'))
     commands = parser.add_subparsers(dest="operation", required=True)
     commands.add_parser("start")
     status = commands.add_parser("status")
@@ -640,10 +667,11 @@ def main():
     stop = commands.add_parser("stop")
     stop.add_argument("--force", action="store_true")
     args = parser.parse_args()
+    select_profile(args.profile)
     session = Session()
     if args.operation == "start":
         state = session.ensure()
-        show({"session": session.id, "run_url": state["run_url"], "ephemeral": True, "idle_seconds": 900})
+        show({"session": session.id, "run_url": state["run_url"], "ephemeral": True, "idle_seconds": IDLE_SECONDS, 'checkpoints': PRIVATE})
     elif args.operation == "status":
         state = session.read()
         if not state or not state.get("run_id"):

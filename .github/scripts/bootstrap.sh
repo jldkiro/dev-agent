@@ -6,7 +6,7 @@ stage=input-validation
 finish_bootstrap() {
   code=$?
   if [ "$code" -ne 0 ]; then
-    case "$stage" in input-validation|runtime|ssh|selftest|tunnel|tunnel-probe|metadata) ;; *) stage=unknown ;; esac
+    case "$stage" in input-validation|runtime|restore|ssh|selftest|tunnel|tunnel-probe|metadata) ;; *) stage=unknown ;; esac
     printf 'DEV_AGENT_START_FAILED step=%s\n' "$stage" >&3
   fi
 }
@@ -23,6 +23,13 @@ PY
 export SESSION_ID="${request_values[0]}"
 export REQUEST_ID="${request_values[1]}"
 export CLIENT_PUBLIC_KEY="${request_values[2]}"
+case "${DEV_AGENT_POLICY:-public}" in
+  public) export IDLE_SECONDS=3600 CHECKPOINTS=false ;;
+  private) export IDLE_SECONDS=300 CHECKPOINTS=true ;;
+  *) exit 1 ;;
+esac
+export ENGINE_REPOSITORY="${DEV_AGENT_ENGINE_REPOSITORY:-$GITHUB_REPOSITORY}"
+export ENGINE_SHA="${DEV_AGENT_ENGINE_SHA:-$GITHUB_SHA}"
 
 python3 - <<'PY'
 import os,re
@@ -38,14 +45,30 @@ mkdir -p "$RUNNER_TEMP/dev-agent-public"
 sudo mkdir -p "$control" "$data/home" "$data/state" /run/sshd
 sudo chown root:root "$control"
 sudo chmod 755 "$control"
-curl --fail --silent --show-error --location "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/worker.py" -o "$RUNNER_TEMP/dev-agent-worker.py" &
+curl --fail --silent --show-error --location "https://raw.githubusercontent.com/$ENGINE_REPOSITORY/$ENGINE_SHA/worker.py" -o "$RUNNER_TEMP/dev-agent-worker.py" &
 worker_download=$!
+curl --fail --silent --show-error --location "https://raw.githubusercontent.com/$ENGINE_REPOSITORY/$ENGINE_SHA/checkpoints.py" -o "$RUNNER_TEMP/dev-agent-checkpoints.py" &
+checkpoint_download=$!
 curl --fail --silent --show-error --location https://github.com/astral-sh/uv/releases/download/0.13.6/uv-x86_64-unknown-linux-gnu.tar.gz -o "$RUNNER_TEMP/uv.tar.gz" &
 uv_download=$!
 curl --fail --silent --show-error --location https://github.com/cloudflare/cloudflared/releases/download/2026.8.3/cloudflared-linux-amd64 -o "$RUNNER_TEMP/dev-agent-cloudflared" &
 cf_download=$!
-for download_pid in "$worker_download" "$uv_download" "$cf_download"; do wait "$download_pid"; done
+for download_pid in "$worker_download" "$checkpoint_download" "$uv_download" "$cf_download"; do wait "$download_pid"; done
 sudo install -m 644 "$RUNNER_TEMP/dev-agent-worker.py" "$control/worker.py"
+sudo install -m 644 "$RUNNER_TEMP/dev-agent-checkpoints.py" "$control/checkpoints.py"
+if [ "$CHECKPOINTS" = true ]; then
+  stage=restore
+  python3 - <<'PY' | sudo tee /opt/dev-agent/github-token >/dev/null
+import os
+token=os.environ['GH_CHECKPOINT_TOKEN']
+assert token
+print(token)
+PY
+  sudo chmod 600 "$control/github-token"
+  sudo python3 "$control/checkpoints.py" restore --root "$data/state" --session "$SESSION_ID" --repository "$GITHUB_REPOSITORY" --token-file "$control/github-token" > "$RUNNER_TEMP/dev-agent-restore.json"
+  printf '%s\n' '{"private":true}' | sudo tee "$data/state/private-policy.json" >/dev/null
+fi
+unset GH_CHECKPOINT_TOKEN
 sudo useradd --no-create-home --home-dir "$data/home" --shell /bin/bash devagent
 sudo usermod --password '*' devagent
 if getent group docker >/dev/null; then sudo usermod --append --groups docker devagent; fi
@@ -85,7 +108,7 @@ ForceCommand /usr/bin/python3 $control/worker.py rpc --root $data/state --sessio
 EOF
 sudo install -m 600 "$RUNNER_TEMP/dev-agent-sshd" "$control/sshd_config"
 sudo /usr/sbin/sshd -t -f "$control/sshd_config"
-sudo -u devagent env -i HOME="$data/home" PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 python3 "$control/worker.py" serve --root "$data/state" --session "$SESSION_ID" --idle-seconds 900 --lifetime-seconds 21000 > "$RUNNER_TEMP/dev-agent-controller.log" 2>&1 3>&- &
+sudo -u devagent env -i HOME="$data/home" PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 python3 "$control/worker.py" serve --root "$data/state" --session "$SESSION_ID" --idle-seconds "$IDLE_SECONDS" --lifetime-seconds 21000 > "$RUNNER_TEMP/dev-agent-controller.log" 2>&1 3>&- &
 echo "$!" > "$RUNNER_TEMP/dev-agent-controller.pid"
 sudo /usr/sbin/sshd -D -e -f "$control/sshd_config" > "$RUNNER_TEMP/dev-agent-sshd.log" 2>&1 3>&- &
 { printf '[127.0.0.1]:2222 '; sudo cat /etc/ssh/dev-agent-host_key.pub; } | sudo tee "$control/probe_known_hosts" >/dev/null
@@ -131,7 +154,7 @@ sudo cat /etc/ssh/dev-agent-host_key.pub > "$RUNNER_TEMP/dev-agent-host.pub"
 python3 - <<'PY'
 import json,os,pathlib,time
 root=pathlib.Path(os.environ['RUNNER_TEMP'])
-data={'protocol':1,'ephemeral':True,'repository':os.environ['GITHUB_REPOSITORY'],'run_id':int(os.environ['GITHUB_RUN_ID']),'sha':os.environ['GITHUB_SHA'],'session_id':os.environ['SESSION_ID'],'request_id':os.environ['REQUEST_ID'],'url':(root/'dev-agent-url').read_text().strip(),'host_key':(root/'dev-agent-host.pub').read_text().strip(),'capabilities':['channel','watch','gzip','source-cache'],'ready_probed':True,'idle_seconds':900,'created_at':time.time()}
+data={'protocol':1,'ephemeral':True,'repository':os.environ['GITHUB_REPOSITORY'],'run_id':int(os.environ['GITHUB_RUN_ID']),'sha':os.environ['GITHUB_SHA'],'engine_sha':os.environ['ENGINE_SHA'],'session_id':os.environ['SESSION_ID'],'request_id':os.environ['REQUEST_ID'],'url':(root/'dev-agent-url').read_text().strip(),'host_key':(root/'dev-agent-host.pub').read_text().strip(),'capabilities':['channel','watch','gzip','source-cache'],'ready_probed':True,'idle_seconds':int(os.environ['IDLE_SECONDS']),'checkpoints':os.environ['CHECKPOINTS']=='true','created_at':time.time()}
 (root/'dev-agent-public'/'connection.json').write_text(json.dumps(data))
 PY
 printf '%s\n' 'DEV_AGENT_READY' >&3

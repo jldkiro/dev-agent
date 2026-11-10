@@ -14,3 +14,4 @@ jobs:
           persist-credentials: false
       - run: bash -n .github/scripts/bootstrap.sh
       - run: python3 tests/test_worker.py
+      - run: python3 tests/test_checkpoints.py

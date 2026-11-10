@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 import base64
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta, timezone
 import hashlib
 import io
@@ -23,7 +23,7 @@ import tarfile
 import time
 import uuid
 
-IDLE_SECONDS = 15 * 60
+IDLE_SECONDS = 60 * 60
 MAX_ARCHIVE = 512 * 1024 * 1024
 MAX_HEADER = 1024 * 1024
 FINISHED = {"completed", "cancelled", "failed", "lost"}
@@ -167,6 +167,7 @@ class Store:
                 cached = self.root / "archives" / digest.hexdigest()
                 archive.replace(cached)
                 cached.chmod(0o400)
+                self.finish_snapshot(session, request)
                 return {"workspace": workspace, **result, "reused": False, "ephemeral": True}
             finally:
                 if temporary.resolve().parent == (self.root / "workspaces").resolve():
@@ -213,10 +214,22 @@ class Store:
             temporary.mkdir(mode=0o700)
             try:
                 result = self.extract(archive, temporary, self.root / "workspaces" / workspace, beat)
+                self.finish_snapshot(session, request)
             finally:
                 if temporary.resolve().parent == (self.root / "workspaces").resolve():
                     shutil.rmtree(temporary)
         return {"workspace": workspace, **result, "reused": True, "ephemeral": True}
+
+    def finish_snapshot(self, session, request):
+        if not (self.root / 'private-policy.json').exists():
+            return
+        import checkpoints
+        with self.transaction() as c:
+            self.check(c, session, writable=True)
+            for row in c.execute("SELECT request FROM jobs WHERE status IN ('queued','starting','running')"):
+                if json.loads(row['request']).get('project') == request.get('project'):
+                    raise RuntimeError('Private project has an active command; wait before synchronizing it')
+        checkpoints.reconcile(self.root, request['project'], request['workspace'], request['sha256'])
 
     def submit(self, session, request):
         job_id = identifier(request["job"])
@@ -230,7 +243,7 @@ class Store:
         env = request.get("env", {})
         if not isinstance(env, dict) or any(not isinstance(k, str) or not isinstance(v, str) or "=" in k or "\0" in k + v for k, v in env.items()):
             raise ValueError("Invalid environment")
-        normalized = json.dumps({k: request[k] for k in ("argv", "workspace", "cwd", "env") if k in request}, sort_keys=True)
+        normalized = json.dumps({k: request[k] for k in ("argv", "workspace", "cwd", "env", 'project') if k in request}, sort_keys=True)
         with self.transaction() as c:
             self.check(c, session, writable=True)
             old = c.execute("SELECT request FROM jobs WHERE id=?", (job_id,)).fetchone()
@@ -238,6 +251,12 @@ class Store:
                 if old["request"] != normalized:
                     raise ValueError("Job identifier already used by another command")
             else:
+                if (self.root / 'private-policy.json').exists():
+                    import checkpoints
+                    project = request.get('project')
+                    record = checkpoints.projects(self.root).get(project)
+                    if not record or record['workspace'] != request['workspace']:
+                        raise ValueError('Private snapshot was superseded before submission; no command started')
                 c.execute("INSERT INTO jobs(id,request,status) VALUES(?,?,'queued')", (job_id, normalized))
             self.activity(c)
         return {"job": job_id, "ephemeral": True}
@@ -410,12 +429,20 @@ def serve(store, session, idle=IDLE_SECONDS, lifetime=21000, tick=0.5):
             item["err"].close()
 
 
-def supervise(store, session):
+def supervise(store, session, checkpoint_repository=None, token_file=None):
     """Only fixed, allowlisted lifecycle messages may reach Actions stdout."""
     allowed = {"requested", "idle-timeout", "hard-limit", "signal"}
     while True:
         state = store.status(session)
         if state["phase"] == "closed":
+            if checkpoint_repository:
+                log = Path('/opt/dev-agent/checkpoint-save.log')
+                with log.open('wb') as diagnostics:
+                    saved = subprocess.run([sys.executable, str(Path(__file__).with_name('checkpoints.py')), 'save', '--root', str(store.root), '--session', session, '--repository', checkpoint_repository, '--token-file', token_file], stdout=diagnostics, stderr=diagnostics, timeout=240)
+                if saved.returncode:
+                    print('DEV_AGENT_CHECKPOINT_FAILED', flush=True)
+                    raise RuntimeError('Private checkpoint failed; previous valid checkpoint retained')
+                print('DEV_AGENT_CHECKPOINT_SAVED', flush=True)
             reason = state["reason"] if state["reason"] in allowed else "unknown"
             print("DEV_AGENT_STOPPED reason=" + reason, flush=True)
             return
@@ -425,6 +452,22 @@ def supervise(store, session):
         except ProcessLookupError:
             raise RuntimeError("Controller exited without closing state") from None
         time.sleep(2)
+
+
+def dispatch(store, session, request, source):
+    op = request['op']
+    lock = nullcontext()
+    if (store.root / 'private-policy.json').exists() and op in {'sync', 'prepare', 'submit'}:
+        import checkpoints
+        lock = checkpoints.project_lock(store.root)
+    with lock:
+        if op == 'sync':
+            return store.sync(session, request, source)
+        if op == 'prepare':
+            return store.prepare(session, request)
+        if op == 'submit':
+            return store.submit(session, request)
+    raise ValueError('Unsupported mutation')
 
 
 def rpc(store, expected_session, source, output, allow_channel=True):
@@ -452,12 +495,8 @@ def rpc(store, expected_session, source, output, allow_channel=True):
         return True
     if op == "status":
         result = store.status(expected_session)
-    elif op == "sync":
-        result = store.sync(expected_session, request, source)
-    elif op == "prepare":
-        result = store.prepare(expected_session, request)
-    elif op == "submit":
-        result = store.submit(expected_session, request)
+    elif op in {'sync', 'prepare', 'submit'}:
+        result = dispatch(store, expected_session, request, source)
     elif op == "poll":
         result = store.poll(expected_session, request)
     elif op == "cancel":
@@ -494,6 +533,8 @@ def main():
     parser.add_argument("--session", required=True)
     parser.add_argument("--idle-seconds", type=float, default=IDLE_SECONDS)
     parser.add_argument("--lifetime-seconds", type=float, default=21000)
+    parser.add_argument('--checkpoint-repository')
+    parser.add_argument('--token-file')
     args = parser.parse_args()
     os.umask(0o077)
     store = Store(args.root)
@@ -501,7 +542,7 @@ def main():
         serve(store, identifier(args.session), args.idle_seconds, args.lifetime_seconds)
     elif args.mode == "supervise":
         try:
-            supervise(store, identifier(args.session))
+            supervise(store, identifier(args.session), args.checkpoint_repository, args.token_file)
         except Exception:
             print("DEV_AGENT_CONTROLLER_FAILED", flush=True)
             raise SystemExit(1) from None

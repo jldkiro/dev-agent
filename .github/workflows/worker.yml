@@ -21,12 +21,16 @@ jobs:
     if: github.actor == github.repository_owner
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    env:
+      DEV_AGENT_POLICY: public
+      DEV_AGENT_ENGINE_REPOSITORY: jldkiro/dev-agent
+      DEV_AGENT_ENGINE_SHA: ${{ vars.DEV_AGENT_ENGINE_SHA || github.sha }}
     steps:
       - name: Bootstrap isolated development worker
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/.github/scripts/bootstrap.sh" -o "$RUNNER_TEMP/dev-agent-bootstrap.sh"
+          curl --fail --silent --show-error --location "https://raw.githubusercontent.com/$DEV_AGENT_ENGINE_REPOSITORY/$DEV_AGENT_ENGINE_SHA/.github/scripts/bootstrap.sh" -o "$RUNNER_TEMP/dev-agent-bootstrap.sh"
           bash "$RUNNER_TEMP/dev-agent-bootstrap.sh"
       - name: Publish public connection information
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
