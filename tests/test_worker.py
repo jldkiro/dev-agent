@@ -339,7 +339,9 @@ class Lifecycle(unittest.TestCase):
             try:
                 if self.store.status("test-session")["phase"] == "open":
                     break
-            except (sqlite3.Error, FileNotFoundError):
+            except (sqlite3.Error, FileNotFoundError, PermissionError):
+                # Schema creation can become visible just before the initial state row.
+                # This fresh test-owned controller still has the same bounded readiness wait.
                 pass
             if time.monotonic() > end or self.process.poll() is not None:
                 self.fail("Controller did not start")

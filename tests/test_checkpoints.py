@@ -198,6 +198,21 @@ class Checkpoints(unittest.TestCase):
         self.assertEqual(api.call_count, 1)
         session.retire.assert_not_called()
 
+    def test_uncertain_push_is_reconciled_by_exact_commit_without_replay(self):
+        original = self.storage.git
+        writes = []
+        def delayed_reply(cwd, *args, **kwargs):
+            result = original(cwd, *args, **kwargs)
+            if args[0] == 'push':
+                writes.append(args)
+                raise subprocess.TimeoutExpired(['git', 'push'], 120)
+            return result
+        with patch.object(self.storage, 'git', side_effect=delayed_reply):
+            result = self.storage.save(self.state, SESSION)
+        self.assertTrue(result['saved'])
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(self.storage.refs(self.root)['refs/heads/state/' + SESSION + '/current'], result['commit'])
+
     def test_failed_private_checkpoint_blocks_automatic_fresh_allocation(self):
         self.addCleanup(dev_agent.select_profile, 'public')
         dev_agent.select_profile('private')

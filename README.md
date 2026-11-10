@@ -6,10 +6,12 @@ Transport: **OpenSSH over a public Cloudflare Quick Tunnel**, without T3 Connect
 a Cloudflare account, a VPN or transferring your private client key to the worker.
 The worker generates its own temporary SSH host key.
 
-Each client session gets its **own VM and SSH keypair**. A worker closes after
-**15 minutes without real activity and without active commands/transfers**.
-Passive status and log polling never prolong its lifetime. All remote files are
-ephemeral: explicitly download results before closing the worker.
+Each client session/profile gets its **own VM and SSH keypair**. Public workers
+close after **one hour** without real activity; private workers after **five
+minutes**, only without active commands/transfers. Passive status and log polling
+never prolong their lifetime. Private workers checkpoint admissible files before
+normal retirement and restore them for the same session. VMs and processes remain
+ephemeral; retrieve important results explicitly.
 
 ## Use
 
@@ -24,18 +26,26 @@ Codex skill linked to `skills/dev-agent`. It refuses to replace unrelated files.
 Authenticate GitHub CLI in a dedicated profile. On Windows this installation
 uses `%LOCALAPPDATA%/JLDIAOS/dev-agent/gh`, separate from the ordinary gh profile.
 The client honors `DEV_AGENT_GH_CONFIG_DIR` and `DEV_AGENT_STATE_DIR` when needed.
+`--profile ha-mcp` uses the ordinary personal gh profile and the public
+`julienld/ha-mcp-dev` administration branch `dev-agent-worker`. This branch is the
+fork's default so GitHub can register/dispatch its workflow; `master` remains a
+clean upstream mirror and the explicit base for contributions. `--profile public`
+uses this engine repository; `--profile private` uses the independent private
+copy `jldkiro/dev-agent-private`. Both latter profiles use the dedicated gh login.
+There is no fallback between repositories or visibilities. Profile and repository
+are part of the session identity. `DEV_AGENT_PROFILE` can select a profile too.
 The worker workflow is restricted to its repository owner.
 
 ```text
-dev-agent run --project C:\path\to\project -- uv run pytest
-dev-agent run --project C:\path\to\project --detach -- python long_check.py
-dev-agent status
-dev-agent status --job JOB_ID
-dev-agent wait JOB_ID
-dev-agent logs JOB_ID --follow
-dev-agent cancel JOB_ID
-dev-agent get --job JOB_ID relative/result.json C:\path\to\result.json
-dev-agent stop
+dev-agent --profile ha-mcp run --project C:\path\to\project -- uv run pytest
+dev-agent --profile private run --project C:\path\to\private-project --detach -- python long_check.py
+dev-agent --profile private status
+dev-agent --profile private status --job JOB_ID
+dev-agent --profile private wait JOB_ID
+dev-agent --profile private logs JOB_ID --follow
+dev-agent --profile private cancel JOB_ID
+dev-agent --profile private get --job JOB_ID relative/result.json C:\path\to\result.json
+dev-agent --profile private stop
 ```
 
 `run` starts the session's worker when needed, uploads the selected project's
@@ -94,6 +104,63 @@ its own worker. Do not use the service for production, durable storage, private
 LAN access, or workloads outside the hosting provider's permitted development
 usage. Source code, runtime and action revisions are pinned to the workflow run.
 
+## Private checkpoints
+
+The common engine implements persistence only for the private deployment. Its
+supervisor uses the job's ephemeral `GITHUB_TOKEN`, restricted to that repository,
+kept in a root-only file. It is absent from command environments and checkpoints.
+Before each restore, save or prune, the GitHub API must confirm the exact repository
+is private. A visibility or network error fails closed; public workers never save
+or restore payloads. Docker/root commands can access their own VM; these are not
+untrusted tenants contained from the supervisor.
+
+After the controller closes and all jobs/transfers are finished, the supervisor
+saves `checkpoint.tar.gz` and `manifest.json`. The compressed archive is capped at
+50 MiB, expanded contents at 512 MiB. It contains the latest workspace of each
+explicit project plus its synchronization base, with SHA-256 verification. Keys,
+common credential files, logs, `.git`, dependency trees and caches are excluded.
+Filters do not detect every secret embedded in arbitrary source files: select
+only the intended private project. Nothing from the agent's ambient context or
+home directory is added. Dependencies must be reconstructed after allocation.
+
+`state/<session>/current` and `state/<session>/previous` each point to an independent
+root commit, with no parent. Publication rotates both references atomically, with
+leases against concurrent updates. An uncertain push is reconciled by its exact
+commit, never replayed. The previous good generation remains until the new one is
+confirmed; restore can fall back to it if the current generation is corrupt.
+References for other sessions older than seven days are pruned during later saves
+(up to twenty deletions per pass). No permanent timer is installed. GitHub controls
+physical collection of unreachable objects; this is not a disk-purge deadline.
+
+On a new VM for the same profile/session, files are restored into fresh controller
+state. Old jobs, output streams, processes, SSH keys and monotonic timestamps are
+not restored. The next command combines current local files with remote file
+changes against their previous upload base. Conflicting edits fail explicitly;
+the local checkout is never overwritten. Only one command per private project
+can be active while another snapshot is prepared. A different conversation does
+not automatically inherit another session's checkpoint.
+
+A failed save is reported as a failed workflow with a fixed public message; its
+detailed diagnostics remain on the VM. Abrupt VM loss or hard Actions cancellation
+can prevent a final checkpoint. If a previous private run with uploaded work did
+not finish successfully, the client requires `--accept-stale-checkpoint` before
+allocating again. That flag explicitly accepts recovery from an older checkpoint;
+agents must obtain a decision rather than silently using it. A `stop` phase of
+`retired` describes VM/key cleanup, not a guarantee that a checkpoint succeeded.
+
+The private copy is independent, not a GitHub fork of a public repository. Thin
+deployment workflows pin the public common engine by full SHA. To preview/update
+only a deployment workflow (without pushing checkpoint branches):
+
+```text
+uv run -s deploy.py --profile private --engine FULL_COMMIT_SHA
+uv run -s deploy.py --profile private --engine FULL_COMMIT_SHA --apply --t3-thread THREAD_ID
+```
+
+Use `--profile ha-mcp` to update the fork's administration workflow. The script
+verifies visibility, the administration/default branch and the exact observed
+file SHA before writing; no mirror push or automatic private-to-public sync occurs.
+
 ## Uncertain outcomes
 
 Allocation and command identifiers are saved before sending a request. If a
@@ -131,7 +198,7 @@ uv run -s tests/test_worker.py
 The portable storage/security tests run on Windows. The Linux controller tests
 also verify expiry, active-command protection, process-group cancellation and
 surviving background descendants. The Actions test workflow runs all of them.
-Production idle timeout is fixed at 900 seconds in the worker workflow; the
+Production idle timeouts are 3600 seconds public and 300 seconds private; the
 shorter controller option exists for isolated lifecycle tests only.
 
 The runtime is a bounded per-job process; no permanent client service, cron,
@@ -202,7 +269,7 @@ compute-minute quota. The selected public Ubuntu 24.04 runner provides 4 vCPUs,
 16 GB RAM and 14 GB SSD. Free allows up to 20 concurrent standard jobs across
 the account, shared with its other Actions work. One session uses one job; this
 does not combine their memory into one machine. GitHub's hard job limit is six
-hours; this controller begins closing after 5 h 50 min, or after 15 minutes idle.
+hours; this controller begins closing after 5 h 50 min, or at its profile's idle timeout.
 See [runner specifications](https://docs.github.com/en/actions/reference/runners/github-hosted-runners),
 [billing](https://docs.github.com/en/actions/concepts/billing-and-usage) and
 [limits](https://docs.github.com/en/actions/reference/limits).

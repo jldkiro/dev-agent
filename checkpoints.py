@@ -285,7 +285,10 @@ class GitCheckpoint:
             args = ['push', '--atomic', '--force-with-lease=' + current + ':' + refs.get(current, ''), '--force-with-lease=' + previous + ':' + refs.get(previous, ''), self.url, oid + ':' + current]
             if promotion in refs:
                 args.append(refs[promotion] + ':' + previous)
-            result = self.git(tmp, *args, check=False)
+            try:
+                self.git(tmp, *args, check=False)
+            except (subprocess.TimeoutExpired, OSError):
+                pass  # Publication may have succeeded; reconcile only this exact root commit.
             # Reconcile an uncertain push by its exact commit; never replay it.
             if self.refs(tmp).get(current) != oid:
                 raise RuntimeError('Checkpoint publication not confirmed')
