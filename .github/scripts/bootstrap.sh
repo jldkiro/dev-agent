@@ -123,7 +123,7 @@ stage=tunnel
 echo 'f29324fe934d1e100617484c78deef803c4dc2cd351d645bbde42e96b4fccc5e  '"$RUNNER_TEMP/dev-agent-cloudflared" | sha256sum --check
 chmod 755 "$RUNNER_TEMP/dev-agent-cloudflared"
 "$RUNNER_TEMP/dev-agent-cloudflared" tunnel --no-autoupdate --url ssh://127.0.0.1:2222 > "$RUNNER_TEMP/dev-agent-tunnel.log" 2>&1 3>&- &
-for attempt in $(seq 1 90); do
+for attempt in $(seq 1 45); do
   grep -Eo 'https://[-a-z0-9]+\.trycloudflare\.com' "$RUNNER_TEMP/dev-agent-tunnel.log" | head -1 > "$RUNNER_TEMP/dev-agent-url" || true
   if test -s "$RUNNER_TEMP/dev-agent-url" && grep -q 'Registered tunnel connection' "$RUNNER_TEMP/dev-agent-tunnel.log"; then break; fi
   sleep 2
@@ -135,7 +135,8 @@ hostname=$(cat "$RUNNER_TEMP/dev-agent-url")
 hostname=${hostname#https://}
 { printf 'dev-agent-public-probe '; sudo cat /etc/ssh/dev-agent-host_key.pub; } | sudo tee -a "$control/probe_known_hosts" >/dev/null
 probe_ready=false
-for attempt in $(seq 1 20); do
+probe_deadline=$((SECONDS + 120))
+while [ "$SECONDS" -lt "$probe_deadline" ]; do
   if printf '{"op":"status","session":"%s"}\n' "$SESSION_ID" | sudo ssh -i "$control/probe_key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5 -o HostKeyAlias=dev-agent-public-probe -o UserKnownHostsFile="$control/probe_known_hosts" -o "ProxyCommand=$RUNNER_TEMP/dev-agent-cloudflared access ssh --hostname %h" "devagent@$hostname" rpc > "$RUNNER_TEMP/dev-agent-public-probe.json"; then
     probe_ready=true
     break

@@ -745,17 +745,22 @@ def main():
                             raise
                 elif not args.force:
                     raise RuntimeError("Allocation is not ready; use stop --force to cancel it")
-                end = time.monotonic() + 20
+                end = time.monotonic() + (250 if PRIVATE else 20)
                 while time.monotonic() < end:
                     run = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}")
                     if run["status"] == "completed":
                         break
                     time.sleep(2)
                 if run["status"] != "completed":
+                    if PRIVATE and not args.force:
+                        show({'phase': 'checkpoint-pending', 'run_url': state['run_url'], 'ephemeral': True})
+                        return 0
                     gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}/cancel", "POST")
                     show({"phase": "cancel-requested", "run_url": state["run_url"], "ephemeral": True})
                     return 0
             session.retire(state)
+            if PRIVATE and run.get('conclusion') != 'success':
+                raise RuntimeError('Private worker retired without a confirmed checkpoint; inspect its run before accepting stale recovery')
             show({"phase": "retired", "run_url": state["run_url"], "ephemeral": True})
         else:
             raise RuntimeError("Allocation outcome not yet reconciled. Run start to locate its workflow before retiring keys.")

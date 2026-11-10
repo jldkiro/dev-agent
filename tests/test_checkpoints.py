@@ -13,6 +13,7 @@ import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+from contextlib import redirect_stdout
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import checkpoints as cp
@@ -184,6 +185,32 @@ class Checkpoints(unittest.TestCase):
         store.submit(SESSION, {**job, 'workspace': '2' * 32})
         with self.assertRaisesRegex(RuntimeError, 'active command'):
             store.prepare(SESSION, {**request, 'workspace': '4' * 32})
+
+    def test_normal_private_stop_never_cancels_an_unfinished_checkpoint(self):
+        self.addCleanup(dev_agent.select_profile, 'public')
+        from unittest.mock import MagicMock
+        session = MagicMock()
+        session.read.return_value = {'run_id': 123, 'run_url': 'synthetic-run', 'phase': 'ready'}
+        output = io.StringIO()
+        with patch.object(sys, 'argv', ['dev-agent', '--profile', 'private', 'stop']), patch.object(dev_agent, 'Session', return_value=session), patch.object(dev_agent, 'gh', return_value={'status': 'in_progress'}) as api, patch.object(dev_agent.time, 'monotonic', side_effect=[0, 300]), redirect_stdout(output):
+            self.assertEqual(dev_agent.main(), 0)
+        self.assertEqual(json.loads(output.getvalue())['phase'], 'checkpoint-pending')
+        self.assertEqual(api.call_count, 1)
+        session.retire.assert_not_called()
+
+    def test_failed_private_checkpoint_blocks_automatic_fresh_allocation(self):
+        self.addCleanup(dev_agent.select_profile, 'public')
+        dev_agent.select_profile('private')
+        with patch.dict('os.environ', {'CODEX_THREAD_ID': 'failed-checkpoint-owner'}), patch.object(dev_agent, 'CONFIG_ROOT', self.root / 'client'):
+            session = dev_agent.Session()
+            state = {'run_id': 123, 'request_id': 'a' * 32, 'phase': 'ready', 'workspace': 'b' * 32}
+            (session.root / state['request_id']).mkdir()
+            session.save(state)
+            def api(path, method='GET', payload=None):
+                self.assertEqual(method, 'GET')
+                return {'artifacts': []} if path.endswith('/artifacts') else {'status': 'completed', 'conclusion': 'failure'}
+            with patch.object(dev_agent, 'cloudflared'), patch.object(dev_agent, 'gh', side_effect=api), self.assertRaisesRegex(RuntimeError, 'without a confirmed checkpoint'):
+                session.ensure()
 
 
 if __name__ == '__main__':
