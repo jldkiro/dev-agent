@@ -57,8 +57,9 @@ included; there is no commit or source checkout requirement for the payload.
 Upload, submission and streamed output share one SSH connection per `run`.
 Snapshots use deterministic gzip at level 1. An identical snapshot already on
 this worker is verified by SHA-256 and extracted into a fresh workspace without
-uploading it again. Local files are reread to detect changes; previously modified
-workspaces are never reused as source. This cache disappears with the worker.
+uploading it again. Local files are reread to detect changes. Public snapshots do
+not reuse previously modified workspaces as source. Private reconciliation and
+restored synchronization bases are described below.
 
 The selected project must be explicit. Git ignore rules and additional filters
 exclude common credentials, `.env` files, private-key formats, `.venv`, caches and
@@ -113,6 +114,10 @@ Before each restore, save or prune, the GitHub API must confirm the exact reposi
 is private. A visibility or network error fails closed; public workers never save
 or restore payloads. Docker/root commands can access their own VM; these are not
 untrusted tenants contained from the supervisor.
+All sessions using this private repository share its GitHub authorization
+boundary: the job token can access other checkpoint branches in that repository.
+Session namespacing prevents automatic mixing; it is not cryptographic access
+control between mutually untrusted agents.
 
 After the controller closes and all jobs/transfers are finished, the supervisor
 saves `checkpoint.tar.gz` and `manifest.json`. The compressed archive is capped at
@@ -149,7 +154,8 @@ agents must obtain a decision rather than silently using it. A `stop` phase of
 `retired` describes VM/key cleanup, not a guarantee that a checkpoint succeeded.
 
 The private copy is independent, not a GitHub fork of a public repository. Thin
-deployment workflows pin the public common engine by full SHA. To preview/update
+deployment workflows pin the public common engine by full SHA. Run `deploy.py`
+from the public engine checkout, whose workflow provides the template. To preview/update
 only a deployment workflow (without pushing checkpoint branches):
 
 ```text
@@ -160,6 +166,24 @@ uv run -s deploy.py --profile private --engine FULL_COMMIT_SHA --apply --t3-thre
 Use `--profile ha-mcp` to update the fork's administration workflow. The script
 verifies visibility, the administration/default branch and the exact observed
 file SHA before writing; no mirror push or automatic private-to-public sync occurs.
+
+### Profile qualification, 2026-11-09
+
+[Receipt](verification/profiles-2026-11-09.json). The public ha-mcp fork executed a
+real Python 3.13 compilation. A private worker expired at its configured five
+minutes (observed completed with its checkpoint after 315.285 s). New allocations
+restored remote edits, preserved a new local file and rejected conflicting edits
+before submission. Git references were inspected as independent roots. A final
+round trip used common engine `690750f65a3578759e94eed6c42028d04c1ee31e`; the public
+profile also verified the absence of checkpoint credentials and policy files.
+
+Linux CI passes 43 tests; Windows passes 38 and skips the five Linux process
+controller tests. The receipt retains resolved findings and cleanup results.
+Private fixture contents and detailed private run identifiers stay out of this
+public receipt. Job keys, connection artifacts and synthetic checkpoint references
+are retired after qualification. No one-hour wall-clock expiry test is claimed:
+the public 3600-second policy was checked in the live authenticated metadata,
+with the same controller's expiry/active-job behavior covered by lifecycle tests.
 
 ## Uncertain outcomes
 

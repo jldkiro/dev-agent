@@ -48,7 +48,8 @@ Une commande reçoit un snapshot neuf du projet. Ne pas supposer que les fichier
 produits par une autre commande figurent dans ce snapshot; récupérer les résultats
 localement ou choisir une seule commande qui réalise l'enchaînement voulu.
 Un snapshot identique évite un nouvel upload, mais produit quand même un nouvel
-espace de travail. Ce cache appartient au worker courant et disparaît avec lui.
+espace de travail. Le cache courant est éphémère; en privé, les bases nécessaires
+à la reprise sont restaurées avec le checkpoint.
 En privé, les modifications distantes sont réconciliées avec les nouveaux
 fichiers locaux; un conflit est signalé sans démarrer la commande. Attendre la
 fin d'une commande avant de synchroniser de nouveau le même projet privé.
