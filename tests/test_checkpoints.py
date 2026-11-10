@@ -143,6 +143,48 @@ class Checkpoints(unittest.TestCase):
             self.assertEqual(len(set(ids)), 3)
         dev_agent.select_profile('public')
 
+    def test_retention_deletes_only_expired_other_session_references(self):
+        self.storage.save(self.state, SESSION)
+        other = 'd' * 32
+        self.storage.save(self.state, other)
+        self.storage.api = lambda path: {'private': True} if not path else {'committer': {'date': '2000-01-01T00:00:00Z'}}
+        self.assertEqual(self.storage.prune(SESSION), 1)
+        self.assertEqual(set(self.storage.refs(self.root)), {'refs/heads/state/' + SESSION + '/current'})
+
+    def test_corrupt_current_falls_back_and_preserves_valid_previous(self):
+        first = self.storage.save(self.state, SESSION)['commit']
+        self.storage.save(self.state, SESSION)
+        with tempfile.TemporaryDirectory(dir=self.root) as tmp:
+            tmp = Path(tmp)
+            self.storage.git(tmp, 'init', '-q')
+            (tmp / 'manifest.json').write_text('{}')
+            self.storage.git(tmp, 'add', 'manifest.json')
+            tree = self.storage.git(tmp, 'write-tree').stdout.strip().decode()
+            corrupt = self.storage.git(tmp, 'commit-tree', tree, data=b'corrupt fixture').stdout.strip().decode()
+            self.storage.git(tmp, 'push', '--force', self.storage.url, corrupt + ':refs/heads/state/' + SESSION + '/current')
+        restored = self.root / 'fallback'
+        result = self.storage.load(restored, SESSION)
+        self.assertTrue(result['fallback'])
+        self.assertEqual(result['commit'], first)
+        self.storage.save(restored, SESSION)
+        self.assertEqual(self.storage.refs(self.root)['refs/heads/state/' + SESSION + '/previous'], first)
+
+    def test_private_submissions_reject_superseded_and_active_snapshots(self):
+        import worker
+        store = worker.Store(self.root / 'rpc')
+        store.initialize(SESSION)
+        (store.root / 'private-policy.json').write_text('{}')
+        base = archive(store.root, {'source.py': b'original'})
+        request = {'project': PROJECT, 'sha256': base, 'workspace': '1' * 32}
+        store.prepare(SESSION, request)
+        store.prepare(SESSION, {**request, 'workspace': '2' * 32})
+        job = {'job': '3' * 32, 'project': PROJECT, 'workspace': '1' * 32, 'argv': ['true']}
+        with self.assertRaisesRegex(ValueError, 'superseded'):
+            store.submit(SESSION, job)
+        store.submit(SESSION, {**job, 'workspace': '2' * 32})
+        with self.assertRaisesRegex(RuntimeError, 'active command'):
+            store.prepare(SESSION, {**request, 'workspace': '4' * 32})
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

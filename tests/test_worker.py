@@ -62,6 +62,20 @@ class StorageSafety(unittest.TestCase):
             self.store.stop("other-session", True)
         self.assertEqual(self.store.status("test-session")["phase"], "open")
 
+    def test_explicit_project_inside_ignored_parent_is_not_silently_empty(self):
+        repository = self.root / 'parent'
+        repository.mkdir()
+        subprocess.run(['git', 'init', '-q', str(repository)], check=True)
+        (repository / '.gitignore').write_text('selected/\n')
+        selected = repository / 'selected'
+        selected.mkdir()
+        (selected / 'source.txt').write_text('selected content')
+        (selected / '.env').write_text('excluded credential')
+        target = self.root / 'explicit.tar'
+        dev_agent.project_archive(selected, target)
+        with tarfile.open(target) as archive:
+            self.assertEqual(archive.getnames(), ['source.txt'])
+
     def test_archive_traversal_and_links_are_rejected(self):
         for name, kind in [("../escape", None), ("/absolute-escape", None), ("link", "symlink")]:
             with self.subTest(name=name), self.assertRaises(ValueError):

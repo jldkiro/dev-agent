@@ -28,6 +28,7 @@ import zipfile
 REPOSITORY = "jldkiro/dev-agent"
 IDLE_SECONDS = 3600
 PRIVATE = False
+ACCEPT_STALE = False
 WORKFLOW = "worker.yml"
 WORKFLOW_BRANCH = None
 CONFIG_ROOT = Path(os.environ.get("DEV_AGENT_STATE_DIR", str(Path(os.environ.get("LOCALAPPDATA", str(Path.home() / ".local/state"))) / "JLDIAOS/dev-agent")))
@@ -304,6 +305,8 @@ class Session:
                 run = gh(f"repos/{REPOSITORY}/actions/runs/{state['run_id']}")
                 if run["status"] == "completed":
                     self._retire_locked(state)
+                    if PRIVATE and state.get('workspace') and run.get('conclusion') != 'success' and not ACCEPT_STALE:
+                        raise RuntimeError('Previous private worker ended without a confirmed checkpoint. Inspect its run; use --accept-stale-checkpoint only when explicitly accepting recovery from the last valid checkpoint.')
                     state = None
             if state and state.get("phase") == "ready":
                 if not PRIVATE and not preflight and "channel" in state.get("connection", {}).get("capabilities", []):
@@ -487,7 +490,7 @@ class Session:
 def allowed(path):
     parts = path.parts
     name = path.name.lower()
-    return not any(p in EXCLUDED for p in parts) and not (name == ".env" or name.startswith(".env.") or name.endswith((".pem", ".p12", ".pfx", ".key")) or name in {"credentials.json", "auth.json", "id_rsa", "id_ed25519", "client_secret.json", ".mcp.json", "mcp.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials", ".envrc"})
+    return not any(p in EXCLUDED for p in parts) and not (name == ".env" or name.startswith(".env.") or name.endswith((".pem", ".p12", ".pfx", ".key")) or (PRIVATE and name.endswith('.log')) or name in {"credentials.json", "auth.json", "id_rsa", "id_ed25519", "client_secret.json", ".mcp.json", "mcp.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials", ".envrc"})
 
 
 def project_archive(project, destination, *, compressed=False):
@@ -495,7 +498,8 @@ def project_archive(project, destination, *, compressed=False):
     if not project.is_dir():
         raise ValueError("Project directory does not exist")
     result = command(["git", "-C", str(project), "rev-parse", "--show-toplevel"], check=False)
-    if result.returncode == 0:
+    ignored_root = command(['git', '-C', str(project), 'check-ignore', '-q', str(project)], check=False).returncode == 0 if result.returncode == 0 else False
+    if result.returncode == 0 and not ignored_root:
         # Resolve paths from the explicitly selected directory, not an ambient parent repo.
         listing = command(["git", "-C", str(project), "ls-files", "--cached", "--others", "--exclude-standard", "-z"]).stdout
         files = [Path(os.fsdecode(x)) for x in listing.split(b"\0") if x]
@@ -643,8 +647,10 @@ def execute(session, args, argv):
 
 
 def main():
+    global ACCEPT_STALE
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--profile', choices=PROFILES, default=os.environ.get('DEV_AGENT_PROFILE', 'public'))
+    parser.add_argument('--accept-stale-checkpoint', action='store_true')
     commands = parser.add_subparsers(dest="operation", required=True)
     commands.add_parser("start")
     status = commands.add_parser("status")
@@ -668,6 +674,7 @@ def main():
     stop.add_argument("--force", action="store_true")
     args = parser.parse_args()
     select_profile(args.profile)
+    ACCEPT_STALE = args.accept_stale_checkpoint
     session = Session()
     if args.operation == "start":
         state = session.ensure()

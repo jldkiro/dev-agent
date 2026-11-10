@@ -155,6 +155,10 @@ python3 - <<'PY'
 import json,os,pathlib,time
 root=pathlib.Path(os.environ['RUNNER_TEMP'])
 data={'protocol':1,'ephemeral':True,'repository':os.environ['GITHUB_REPOSITORY'],'run_id':int(os.environ['GITHUB_RUN_ID']),'sha':os.environ['GITHUB_SHA'],'engine_sha':os.environ['ENGINE_SHA'],'session_id':os.environ['SESSION_ID'],'request_id':os.environ['REQUEST_ID'],'url':(root/'dev-agent-url').read_text().strip(),'host_key':(root/'dev-agent-host.pub').read_text().strip(),'capabilities':['channel','watch','gzip','source-cache'],'ready_probed':True,'idle_seconds':int(os.environ['IDLE_SECONDS']),'checkpoints':os.environ['CHECKPOINTS']=='true','created_at':time.time()}
+if data['checkpoints']:
+    restored=json.loads((root/'dev-agent-restore.json').read_text())
+    data['checkpoint_restored']=restored['restored']
+    data['checkpoint_fallback']=restored.get('fallback',False)
 (root/'dev-agent-public'/'connection.json').write_text(json.dumps(data))
 PY
 printf '%s\n' 'DEV_AGENT_READY' >&3

@@ -250,6 +250,7 @@ class GitCheckpoint:
                         if (stage / name).exists():
                             shutil.copytree(stage / name, root / name, dirs_exist_ok=True)
                     shutil.copy2(stage / 'projects.json', root / 'projects.json')
+                    (root / '.restored-commit').write_text(oid)
                     return {'restored': True, 'commit': oid, 'fallback': ref.endswith('/previous')}
                 except Exception:
                     if ref == present[-1]:
@@ -271,15 +272,19 @@ class GitCheckpoint:
             self.git(tmp, 'init', '-q')
             refs = self.refs(tmp)
             current, previous = ('refs/heads/state/' + session + '/' + n for n in ('current', 'previous'))
-            if current in refs:
-                self.git(tmp, 'fetch', '-q', '--depth=1', self.url, current)
+            promotion = current
+            restored = Path(root) / '.restored-commit'
+            if restored.exists() and refs.get(previous) == restored.read_text().strip():
+                promotion = previous  # A corrupt current fell back to the valid previous generation.
+            if promotion in refs:
+                self.git(tmp, 'fetch', '-q', '--depth=1', self.url, promotion)
             self.git(tmp, 'add', '--', 'checkpoint.tar.gz', 'manifest.json')
             tree = self.git(tmp, 'write-tree').stdout.strip().decode()
             # No -p: every generation is an independent root, never an archive chain.
             oid = self.git(tmp, 'commit-tree', tree, data=('Ephemeral checkpoint\n\nDev-Agent-Session: ' + session + '\n').encode()).stdout.strip().decode()
             args = ['push', '--atomic', '--force-with-lease=' + current + ':' + refs.get(current, ''), '--force-with-lease=' + previous + ':' + refs.get(previous, ''), self.url, oid + ':' + current]
-            if current in refs:
-                args.append(refs[current] + ':' + previous)
+            if promotion in refs:
+                args.append(refs[promotion] + ':' + previous)
             result = self.git(tmp, *args, check=False)
             # Reconcile an uncertain push by its exact commit; never replay it.
             if self.refs(tmp).get(current) != oid:
